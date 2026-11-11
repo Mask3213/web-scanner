@@ -1,0 +1,16 @@
+# 常用敏感路径（小字典，起步用；大字典请用 -w 指向 secLists）
+admin
+login
+robots.txt
+.git/config
+index.php
+install.php
+phpinfo.php
+upload
+test
+vul
+assets
+inc
+pkxss
+config.inc.php
+backup.zip
