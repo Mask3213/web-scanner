@@ -3,10 +3,11 @@
 功能：1) 指纹识别  2) 敏感文件检测  3) 目录扫描  4) SQL 注入检测
 """
 import argparse
+import random
 import threading
 import requests
 from queue import Queue, Empty
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse, parse_qs, urlencode, urlunparse
 
 
 # ============ 通用 ============
@@ -169,6 +170,42 @@ def sqli_check(url):
         print("    未发现明显注入（可进一步用时间盲注检测）")
 
 
+# ============ 模块 5：XSS 检测 ============
+def xss_check(url):
+    """对带参数的 URL 做反射型 XSS 检测"""
+    print(f"\n[*] XSS 检测: {url}")
+
+    # 带随机数的独特标记，用来确认"回显的确实是我们注入的内容"
+    marker = "xsstest" + str(random.randint(100000, 999999))
+    payload = f"<script>alert('{marker}')</script>"
+
+    parts = urlparse(url)
+    if not parts.query:
+        print("    [!] URL 里没有参数（?key=value），无法测反射型 XSS")
+        return
+
+    # 把所有参数的值都替换成 payload，再重新编码
+    qs = parse_qs(parts.query, keep_blank_values=True)
+    for k in qs:
+        qs[k] = [payload]
+    test_url = urlunparse((parts.scheme, parts.netloc, parts.path,
+                           parts.params, urlencode(qs, doseq=True), parts.fragment))
+
+    try:
+        r = requests.get(test_url, timeout=5)
+    except requests.RequestException as e:
+        print(f"    [!] 连接失败: {e}")
+        return
+
+    if payload in r.text:
+        print("    [高危] 反射型 XSS（payload 原样回显，未做 HTML 转义）")
+        print(f"    测试 URL: {test_url}")
+    elif marker in r.text:
+        print("    payload 被 HTML 转义（< 变成 &lt;），未构成 XSS")
+    else:
+        print("    payload 未回显，未发现反射型 XSS")
+
+
 # ============ 主入口 ============
 def main():
     parser = argparse.ArgumentParser(description="Web 安全扫描器（入门版）")
@@ -177,15 +214,20 @@ def main():
     parser.add_argument("-t", "--threads", type=int, default=20, help="目录扫描线程数")
     parser.add_argument("--sqli", metavar="URL",
                         help="对指定带参数的 URL 做 SQL 注入检测，如 http://127.0.0.1/pikachu/vul/sqli/sqli_str.php?id=1")
+    parser.add_argument("--xss", metavar="URL",
+                        help="对指定带参数的 URL 做反射型 XSS 检测，如 http://127.0.0.1/pikachu/vul/xss/xss_reflected_get.php?message=test")
     args = parser.parse_args()
 
-    # SQL 注入模式：单独跑，不跑目录扫描
+    # 单点检测模式：只跑对应模块，不跑目录扫描
     if args.sqli:
         sqli_check(args.sqli)
         return
+    if args.xss:
+        xss_check(args.xss)
+        return
 
     if not args.url:
-        parser.error("请提供 -u 目标地址，或用 --sqli 指定注入测试目标")
+        parser.error("请提供 -u 目标地址，或用 --sqli / --xss 指定单点检测目标")
 
     fingerprint(args.url)
     sensitive_check(args.url)
