@@ -206,6 +206,16 @@ def xss_check(url):
         print("    payload 未回显，未发现反射型 XSS")
 
 
+# ============ 通用：目标存活探测 ============
+def target_alive(url):
+    """扫描前先探测目标是否存活，避免目标没启动时得到误导性的"未发现"结果"""
+    try:
+        r = requests.get(url, timeout=5)
+        return True, r.status_code
+    except requests.RequestException:
+        return False, None
+
+
 # ============ 主入口 ============
 def main():
     parser = argparse.ArgumentParser(description="Web 安全扫描器（入门版）")
@@ -228,6 +238,12 @@ def main():
 
     if not args.url:
         parser.error("请提供 -u 目标地址，或用 --sqli / --xss 指定单点检测目标")
+
+    ok, code = target_alive(args.url)
+    if not ok:
+        print(f"[!] 目标 {args.url} 无法连接，请确认服务（Apache）已启动")
+        return
+    print(f"[*] 目标可达，状态码 {code}")
 
     fingerprint(args.url)
     sensitive_check(args.url)
