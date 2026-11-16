@@ -1,40 +1,37 @@
 # -*- coding: utf-8 -*-
-"""反射型 XSS 检测"""
+"""反射型 XSS 检测（支持 GET / POST）"""
 import random
 import requests
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from . import common
 
 
-def xss_check(url):
-    """返回结构化结果（dict）"""
+def xss_check(url, data=None, param=None):
+    """对指定参数做反射型 XSS 检测，返回结构化结果"""
+    method, base, params = common.parse_target(url, data)
+    pname = common.pick_param(params, param)
     result = {
         "module": "xss",
         "target": url,
+        "param": pname,
         "vulnerable": False,
         "payload": None,
-        "test_url": None,
+        "test": None,
         "detail": None,
     }
+    if pname is None:
+        result["error"] = "目标没有可注入的参数"
+        return result
 
     marker = "xsstest" + str(random.randint(100000, 999999))
     payload = f"<script>alert('{marker}')</script>"
     result["payload"] = payload
 
-    parts = urlparse(url)
-    if not parts.query:
-        result["detail"] = "URL 无参数（?key=value），无法测反射型 XSS"
-        return result
-
-    # 把所有参数的值都替换成 payload，再重新编码
-    qs = parse_qs(parts.query, keep_blank_values=True)
-    for k in qs:
-        qs[k] = [payload]
-    test_url = urlunparse((parts.scheme, parts.netloc, parts.path,
-                           parts.params, urlencode(qs, doseq=True), parts.fragment))
-    result["test_url"] = test_url
+    # 用 payload 直接替换参数值
+    params[pname] = payload
+    result["test"] = common.display(method, base, params)
 
     try:
-        r = requests.get(test_url, timeout=5)
+        r = common.send(method, base, params)
     except requests.RequestException as e:
         result["error"] = str(e)
         return result

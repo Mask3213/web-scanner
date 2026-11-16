@@ -42,7 +42,7 @@ def _render_fingerprint(r):
 
 
 def _render_sqli(r):
-    print(f"  [*] SQL 注入检测: {r.get('target')}")
+    print(f"  [*] SQL 注入检测: {r.get('target')}  参数: {r.get('param')}")
     if r.get("error"):
         print(f"      [!] {r['error']}")
         return
@@ -53,6 +53,11 @@ def _render_sqli(r):
             print(f"      命中特征: {r['evidence']}")
     else:
         print("      未发现注入")
+    if r.get("boolean"):
+        b = r["boolean"]
+        print(f"      布尔测试: 真 {b['true_len']} | 假 {b['false_len']} | 差 {b['diff']}")
+    if r.get("timing"):
+        print(f"      时间测试: 响应 {r['timing']['elapsed']} 秒")
 
 
 def _render_xss(r):

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""通用工具：字典加载、目标存活探测"""
+"""通用工具：字典加载、目标存活探测、请求构造"""
 import requests
+from urllib.parse import urlparse, urlencode, urlunparse, parse_qsl
 
 
 def load_wordlist(path):
@@ -16,3 +17,40 @@ def target_alive(url):
         return True, r.status_code
     except requests.RequestException:
         return False, None
+
+
+def parse_target(url, data=None):
+    """解析目标 → (method, base_url, params)
+    data 为 None → GET（参数在 URL query 里）
+    data 为 "k=v&k2=v2" → POST（参数在 body 里）
+    """
+    if data is not None:
+        return "POST", url, dict(parse_qsl(data, keep_blank_values=True))
+    parts = urlparse(url)
+    base = urlunparse((parts.scheme, parts.netloc, parts.path, parts.params, "", parts.fragment))
+    return "GET", base, dict(parse_qsl(parts.query, keep_blank_values=True))
+
+
+def pick_param(params, param=None):
+    """选择要注入的参数：优先用指定的，否则选第一个非 submit 的参数"""
+    if param:
+        return param
+    for k in params:
+        if k.lower() != "submit":
+            return k
+    return next(iter(params), None)
+
+
+def send(method, url, params, timeout=5):
+    """按方法发请求（GET 用 query，POST 用 body）"""
+    if method == "POST":
+        return requests.post(url, data=params, timeout=timeout)
+    return requests.get(url, params=params, timeout=timeout)
+
+
+def display(method, url, params):
+    """构造可读的请求描述（用于报告展示）"""
+    qs = urlencode(params)
+    if method == "POST":
+        return f"{url}  (POST body: {qs})"
+    return f"{url}?{qs}"

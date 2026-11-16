@@ -19,15 +19,17 @@ def main():
     parser.add_argument("-t", "--threads", type=int, default=20, help="目录扫描线程数")
     parser.add_argument("--sqli", metavar="URL", help="SQL 注入检测目标（带参数的 URL）")
     parser.add_argument("--xss", metavar="URL", help="反射型 XSS 检测目标（带参数的 URL）")
+    parser.add_argument("--data", metavar="k=v", help="POST 请求体（配合 --sqli / --xss），如 name=1")
+    parser.add_argument("--param", metavar="NAME", help="指定要检测的参数名（默认自动选第一个非 submit 参数）")
     parser.add_argument("-o", "--output", metavar="FILE", help="保存 JSON 报告到文件")
     args = parser.parse_args()
 
     findings = []
 
     if args.sqli:
-        findings.append(sqli.sqli_check(args.sqli))
+        findings.append(sqli.sqli_check(args.sqli, data=args.data, param=args.param))
     elif args.xss:
-        findings.append(xss.xss_check(args.xss))
+        findings.append(xss.xss_check(args.xss, data=args.data, param=args.param))
     else:
         if not args.url:
             parser.error("请提供 -u 目标地址，或用 --sqli / --xss 指定单点检测目标")

