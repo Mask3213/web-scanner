@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web 安全扫描器</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --accent: #3b82f6;
+    --accent2: #f59e0b;
+    --danger: #ef4444;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 28px; }
+  header h1 { font-size: 28px; letter-spacing: 1px; }
+  header h1 span { color: var(--accent); }
+  header p { color: var(--muted); margin-top: 8px; font-size: 14px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input {
+    width: 100%;
+    padding: 11px 14px;
+    background: #0f172a;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    margin-bottom: 14px;
+    outline: none;
+  }
+  input:focus { border-color: var(--accent); }
+  .row { display: flex; gap: 14px; }
+  .row > div { flex: 1; }
+  .buttons { display: flex; gap: 12px; flex-wrap: wrap; }
+  button {
+    flex: 1;
+    min-width: 120px;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #fff;
+    transition: opacity .15s;
+  }
+  button:hover { opacity: .85; }
+  .btn-scan { background: var(--accent); }
+  .btn-sqli { background: var(--accent2); color: #1e293b; }
+  .btn-xss  { background: #8b5cf6; }
+  #status { color: var(--accent); margin-bottom: 12px; font-size: 14px; }
+  .err { background: rgba(239,68,68,.15); border: 1px solid var(--danger); color: #fca5a5; padding: 12px 14px; border-radius: 8px; margin-bottom: 12px; }
+  .head { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+  .block { background: #0f172a; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
+  .block h3 { font-size: 14px; margin-bottom: 10px; color: var(--accent); }
+  .item { font-size: 13px; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+  .item:last-child { border-bottom: none; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; margin-right: 6px; }
+  .badge-danger { background: rgba(239,68,68,.2); color: #fca5a5; }
+  .badge-ok { background: rgba(34,197,94,.2); color: #86efac; }
+  .badge-warn { background: rgba(245,158,11,.2); color: #fcd34d; }
+  code { font-family: Consolas, monospace; color: #7dd3fc; word-break: break-all; }
+  .kv { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Web 安全<span>扫描器</span></h1>
+    <p>仅供学习与授权测试使用 · 引擎：Python · 接口：FastAPI</p>
+  </header>
+
+  <div class="card">
+    <label>目标地址</label>
+    <input id="url" placeholder="如 http://127.0.0.1/pikachu（SQLi/XSS 请填带参数的完整 URL）">
+    <div class="row">
+      <div>
+        <label>目录字典（完整扫描用）</label>
+        <input id="wordlist" value="dict.txt">
+      </div>
+      <div>
+        <label>线程数</label>
+        <input id="threads" type="number" value="20" min="1" max="200">
+      </div>
+    </div>
+    <div class="buttons">
+      <button class="btn-scan" onclick="run('scan')">完整扫描</button>
+      <button class="btn-sqli" onclick="run('sqli')">SQL 注入</button>
+      <button class="btn-xss"  onclick="run('xss')">XSS 检测</button>
+    </div>
+  </div>
+
+  <div id="status"></div>
+  <div id="result"></div>
+</div>
+
+<script>
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function run(mode) {
+  const url = document.getElementById('url').value.trim();
+  if (!url) { alert('请输入目标地址'); return; }
+  const status = document.getElementById('status');
+  const result = document.getElementById('result');
+  status.textContent = '扫描中，请稍候…';
+  result.innerHTML = '';
+  let path, body;
+  if (mode === 'scan') {
+    path = '/scan';
+    body = { url, wordlist: document.getElementById('wordlist').value, threads: +document.getElementById('threads').value };
+  } else if (mode === 'sqli') {
+    path = '/sqli'; body = { url };
+  } else {
+    path = '/xss'; body = { url };
+  }
+  try {
+    const resp = await fetch(path, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    const data = await resp.json();
+    status.textContent = '';
+    render(data, mode);
+  } catch (e) {
+    status.textContent = '';
+    result.innerHTML = '<div class="err">请求失败：' + esc(e) + '</div>';
+  }
+}
+
+function render(data, mode) {
+  const el = document.getElementById('result');
+  if (data.error) { el.innerHTML = '<div class="err">' + esc(data.error) + '</div>'; return; }
+  if (mode === 'scan') {
+    if (data.alive === false) { el.innerHTML = '<div class="err">目标无法连接，请确认服务已启动</div>'; return; }
+    let html = '<div class="head">目标：<code>' + esc(data.target) + '</code> · 时间：' + esc(data.time) + '</div>';
+    for (const f of data.findings || []) html += finding(f);
+    el.innerHTML = html;
+  } else {
+    el.innerHTML = finding(data);
+  }
+}
+
+function finding(f) {
+  const m = f.module;
+  if (m === 'fingerprint') {
+    if (!f.alive) return '<div class="err">连接失败：' + esc(f.error) + '</div>';
+    let h = '<div class="block"><h3>🔍 指纹识别</h3>';
+    h += '<div class="item"><span class="kv">Web 服务器：</span>' + esc(f.server || '未知') + '</div>';
+    h += '<div class="item"><span class="kv">语言：</span>' + esc(f.language || '未知') + '</div>';
+    h += '<div class="item"><span class="kv">框架/系统：</span>' + esc(f.framework || '未知') + '</div>';
+    return h + '</div>';
+  }
+  if (m === 'sensitive') {
+    return '<div class="item"><span class="badge badge-danger">高危</span><code>' + esc(f.url) + '</code> <span class="kv">(' + f.size + ' 字节)</span></div>';
+  }
+  if (m === 'dir') {
+    return '<div class="item"><span class="badge badge-warn">' + f.status + '</span><code>' + esc(f.url) + '</code></div>';
+  }
+  if (m === 'sqli') {
+    let h = '<div class="block"><h3>💉 SQL 注入检测 <span class="kv">参数：' + esc(f.param || '-') + '</span></h3>';
+    if (f.error) return h + '<div class="err">' + esc(f.error) + '</div></div>';
+    if (f.vulnerable) {
+      h += '<div class="item"><span class="badge badge-danger">存在注入</span>' + esc(f.technique) + '</div>';
+      h += '<div class="item"><span class="kv">payload：</span><code>' + esc(f.payload) + '</code></div>';
+    } else {
+      h += '<div class="item"><span class="badge badge-ok">未发现注入</span></div>';
+    }
+    if (f.boolean) h += '<div class="item"><span class="kv">布尔测试：真 ' + f.boolean.true_len + ' / 假 ' + f.boolean.false_len + ' / 差 ' + f.boolean.diff + '</span></div>';
+    if (f.timing) h += '<div class="item"><span class="kv">时间测试：响应 ' + f.timing.elapsed + ' 秒</span></div>';
+    return h + '</div>';
+  }
+  if (m === 'xss') {
+    let h = '<div class="block"><h3>⚡ XSS 检测 <span class="kv">参数：' + esc(f.param || '-') + '</span></h3>';
+    if (f.error) return h + '<div class="err">' + esc(f.error) + '</div></div>';
+    if (f.vulnerable) {
+      h += '<div class="item"><span class="badge badge-danger">反射型 XSS</span>' + esc(f.detail || '') + '</div>';
+      h += '<div class="item"><span class="kv">payload：</span><code>' + esc(f.payload) + '</code></div>';
+    } else {
+      h += '<div class="item"><span class="badge badge-ok">' + esc(f.detail || '未发现') + '</span></div>';
+    }
+    return h + '</div>';
+  }
+  return '';
+}
+</script>
+</body>
+</html>

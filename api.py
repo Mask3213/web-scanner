@@ -2,17 +2,32 @@
 """Web 安全扫描器 REST API（FastAPI）
 
 启动：uvicorn api:app --reload --host 127.0.0.1 --port 8000
+前端页面：http://127.0.0.1:8000/
 接口文档：http://127.0.0.1:8000/docs
 """
+import os
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, report
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 app = FastAPI(
     title="Web 安全扫描器",
     description="提供指纹识别、敏感文件检测、目录扫描、SQL 注入、XSS 检测的 REST API",
     version="2.0.0",
+)
+
+# 允许前端 / 小程序从任意来源调用（前端单独部署时也需要）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -28,9 +43,15 @@ class InjectRequest(BaseModel):
     param: str | None = Field(None, description="指定参数名")
 
 
-@app.get("/")
-def root():
-    return {"name": "Web 安全扫描器", "docs": "/docs", "version": "2.0.0"}
+@app.get("/", include_in_schema=False)
+def index():
+    """前端页面"""
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+
+@app.get("/api/info")
+def info():
+    return {"name": "Web 安全扫描器", "version": "2.0.0", "docs": "/docs"}
 
 
 @app.post("/scan")
