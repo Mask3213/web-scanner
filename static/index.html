@@ -123,7 +123,7 @@ async function run(mode) {
   if (!url) { alert('请输入目标地址'); return; }
   const status = document.getElementById('status');
   const result = document.getElementById('result');
-  status.textContent = '扫描中，请稍候…';
+  status.textContent = '提交任务中…';
   result.innerHTML = '';
   let path, body;
   if (mode === 'scan') {
@@ -137,11 +137,37 @@ async function run(mode) {
   try {
     const resp = await fetch(path, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
     const data = await resp.json();
-    status.textContent = '';
-    render(data, mode);
+    if (data.task_id) {
+      poll(data.task_id, mode);
+    } else {
+      status.textContent = '';
+      render(data, mode);
+    }
   } catch (e) {
     status.textContent = '';
     result.innerHTML = '<div class="err">请求失败：' + esc(e) + '</div>';
+  }
+}
+
+async function poll(taskId, mode) {
+  const status = document.getElementById('status');
+  const result = document.getElementById('result');
+  try {
+    const resp = await fetch('/task/' + taskId);
+    const t = await resp.json();
+    if (t.status === 'running') {
+      status.textContent = '扫描中，请稍候…';
+      setTimeout(() => poll(taskId, mode), 1500);
+    } else if (t.status === 'done') {
+      status.textContent = '';
+      render(t.result, mode);
+    } else {
+      status.textContent = '';
+      result.innerHTML = '<div class="err">任务出错：' + esc(t.error || t.status) + '</div>';
+    }
+  } catch (e) {
+    status.textContent = '';
+    result.innerHTML = '<div class="err">查询任务失败：' + esc(e) + '</div>';
   }
 }
 

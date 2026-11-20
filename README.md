@@ -51,17 +51,26 @@ python main.py -u http://127.0.0.1/pikachu -o report.json
 uvicorn api:app --reload --host 127.0.0.1 --port 8000
 ```
 
+- 前端页面：http://127.0.0.1:8000/
 - 交互式接口文档：http://127.0.0.1:8000/docs
-- `POST /scan`：完整扫描，返回 JSON 结果
-- `POST /sqli`：SQL 注入检测
-- `POST /xss`：XSS 检测
+
+**异步任务流程**：先提交任务拿到 `task_id`，再轮询取结果。
+
+- `POST /scan`、`POST /sqli`、`POST /xss`：提交任务，返回 `{"task_id": "...", "status": "running"}`
+- `GET /task/{task_id}`：查询任务状态与结果（`running` / `done` / `error`）
+- `GET /tasks`：任务列表
 
 示例：
 
 ```bash
+# 提交扫描任务
 curl -X POST http://127.0.0.1:8000/scan \
   -H "Content-Type: application/json" \
   -d '{"url": "http://127.0.0.1/pikachu", "wordlist": "dict.txt"}'
+# 返回 {"task_id":"abc123","status":"running"}
+
+# 轮询结果
+curl http://127.0.0.1:8000/task/abc123
 ```
 
 ## 项目结构
