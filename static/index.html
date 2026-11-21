@@ -80,6 +80,21 @@
   .badge-warn { background: rgba(245,158,11,.2); color: #fcd34d; }
   code { font-family: Consolas, monospace; color: #7dd3fc; word-break: break-all; }
   .kv { color: var(--muted); }
+
+  /* 历史记录 */
+  .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .card-head h3 { font-size: 16px; }
+  .btn-refresh { background: #334155; color: var(--text); padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; font-size: 13px; flex: none; min-width: 0; }
+  .btn-refresh:hover { background: #475569; }
+  .history-item { display: flex; justify-content: space-between; align-items: center; background: #0f172a; border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
+  .hi-left { flex: 1; min-width: 0; }
+  .hi-mode { display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); margin-right: 8px; }
+  .hi-target { margin-top: 4px; }
+  .hi-target code { font-size: 12px; }
+  .hi-time { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .hi-right { display: flex; gap: 8px; flex: none; }
+  .hi-btn { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; flex: none; min-width: 0; }
+  .hi-del { background: rgba(239,68,68,.25); color: #fca5a5; }
 </style>
 </head>
 <body>
@@ -111,6 +126,14 @@
 
   <div id="status"></div>
   <div id="result"></div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3>📋 历史记录</h3>
+      <button class="btn-refresh" onclick="loadHistory()">刷新</button>
+    </div>
+    <div id="history"></div>
+  </div>
 </div>
 
 <script>
@@ -171,6 +194,71 @@ async function poll(taskId, mode) {
   }
 }
 
+// ---------------- 历史记录 ----------------
+const MODE_NAME = { scan: '完整扫描', sqli: 'SQL注入', xss: 'XSS' };
+
+async function loadHistory() {
+  const el = document.getElementById('history');
+  try {
+    const resp = await fetch('/tasks');
+    const tasks = await resp.json();
+    if (!tasks.length) { el.innerHTML = '<div class="head">暂无记录</div>'; return; }
+    el.innerHTML = tasks.map(historyItem).join('');
+  } catch (e) {
+    el.innerHTML = '<div class="err">加载历史失败：' + esc(e) + '</div>';
+  }
+}
+
+function historyItem(t) {
+  const mode = MODE_NAME[t.mode] || t.mode;
+  const badge = t.status === 'done' ? '<span class="badge badge-ok">完成</span>'
+    : t.status === 'running' ? '<span class="badge badge-warn">进行中</span>'
+    : '<span class="badge badge-danger">出错</span>';
+  const time = new Date(t.created * 1000).toLocaleString();
+  return '<div class="history-item">' +
+    '<div class="hi-left">' +
+      '<span class="hi-mode">' + mode + '</span>' + badge +
+      '<div class="hi-target"><code>' + esc(t.target) + '</code></div>' +
+      '<div class="hi-time">' + time + '</div>' +
+    '</div>' +
+    '<div class="hi-right">' +
+      '<button class="hi-btn" onclick="viewTask(\'' + t.task_id + '\', \'' + t.mode + '\')">查看</button>' +
+      '<button class="hi-btn hi-del" onclick="deleteTask(\'' + t.task_id + '\')">删除</button>' +
+    '</div>' +
+  '</div>';
+}
+
+async function viewTask(taskId, mode) {
+  const status = document.getElementById('status');
+  const result = document.getElementById('result');
+  try {
+    const resp = await fetch('/task/' + taskId);
+    const t = await resp.json();
+    if (t.status === 'running') {
+      status.textContent = '任务仍在进行…';
+      poll(taskId, mode);
+    } else if (t.result) {
+      status.textContent = '';
+      render(t.result, mode);
+    } else if (t.error) {
+      status.textContent = '';
+      result.innerHTML = '<div class="err">' + esc(t.error) + '</div>';
+    }
+  } catch (e) {
+    result.innerHTML = '<div class="err">加载结果失败：' + esc(e) + '</div>';
+  }
+}
+
+async function deleteTask(taskId) {
+  try {
+    await fetch('/task/' + taskId, { method: 'DELETE' });
+    loadHistory();
+  } catch (e) {
+    alert('删除失败：' + e);
+  }
+}
+
+// ---------------- 结果渲染 ----------------
 function render(data, mode) {
   const el = document.getElementById('result');
   if (data.error) { el.innerHTML = '<div class="err">' + esc(data.error) + '</div>'; return; }
@@ -226,6 +314,9 @@ function finding(f) {
   }
   return '';
 }
+
+// 页面加载时读取历史记录
+window.addEventListener('DOMContentLoaded', loadHistory);
 </script>
 </body>
 </html>

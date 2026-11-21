@@ -6,3 +6,7 @@ venv/
 
 # 日志
 *.log
+
+# 本地数据
+tasks.db
+*.db

@@ -58,7 +58,10 @@ uvicorn api:app --reload --host 127.0.0.1 --port 8000
 
 - `POST /scan`、`POST /sqli`、`POST /xss`：提交任务，返回 `{"task_id": "...", "status": "running"}`
 - `GET /task/{task_id}`：查询任务状态与结果（`running` / `done` / `error`）
-- `GET /tasks`：任务列表
+- `GET /tasks`：任务列表（历史记录）
+- `DELETE /task/{task_id}`：删除一条历史记录
+
+任务与结果存 SQLite（`tasks.db`），**重启服务不丢失**。
 
 示例：
 
@@ -101,8 +104,8 @@ requirements.txt     依赖
 ## 后续路线
 
 - 阶段 A：夯实引擎 ✅（待做：存储型 XSS、会话/登录处理、配置化）
-- 阶段 B：FastAPI 后端服务化 ✅（待做：异步任务队列、鉴权）
-- 阶段 C：网页版前端（Vue3 / React）
+- 阶段 B：FastAPI 后端服务化 ✅（异步任务队列、SQLite 持久化已完成；待做：鉴权）
+- 阶段 C：网页版前端 ✅（基础版 + 历史记录已完成；待做：Vue3/React 升级、图表）
 - 阶段 D：小程序 / App（复用同一套 API）
 
 ## 免责声明

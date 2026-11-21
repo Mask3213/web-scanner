@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Web 安全扫描器 REST API（FastAPI，异步任务版）
+"""Web 安全扫描器 REST API（FastAPI，异步任务 + SQLite 持久化）
 
 启动：uvicorn api:app --reload --host 127.0.0.1 --port 8000
 前端页面：http://127.0.0.1:8000/
 接口文档：http://127.0.0.1:8000/docs
 
-扫描流程（异步）：POST /scan 提交任务 → 得到 task_id → 轮询 GET /task/{task_id}
+扫描流程：POST /scan 提交任务 → 得到 task_id → 轮询 GET /task/{task_id}
+历史记录：GET /tasks 列表，DELETE /task/{task_id} 删除，数据存 SQLite（重启不丢）
 """
+import json
 import os
+import sqlite3
 import threading
 import time
 import uuid
@@ -21,11 +24,12 @@ from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+DB_PATH = os.path.join(BASE_DIR, "tasks.db")
 
 app = FastAPI(
     title="Web 安全扫描器",
-    description="提供指纹识别、敏感文件检测、目录扫描、SQL 注入、XSS 检测的 REST API（异步任务）",
-    version="2.1.0",
+    description="提供指纹识别、敏感文件检测、目录扫描、SQL 注入、XSS 检测的 REST API（异步任务 + 持久化）",
+    version="2.2.0",
 )
 
 app.add_middleware(
@@ -34,10 +38,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# 内存中的任务表：task_id -> {"status", "result", "created"}
-# 注意：重启服务会清空（演示用）；生产环境应换成 Redis / 数据库
-TASKS = {}
 
 
 class ScanRequest(BaseModel):
@@ -52,10 +52,69 @@ class InjectRequest(BaseModel):
     param: str | None = Field(None, description="指定参数名")
 
 
-# ---------- 扫描任务逻辑 ----------
+# ---------------- SQLite 存储 ----------------
+_db_lock = threading.Lock()
+
+
+def _db():
+    """返回一个新连接（每次操作独立连接，加锁避免并发写冲突）"""
+    return sqlite3.connect(DB_PATH, timeout=10)
+
+
+def _init_db():
+    with _db_lock:
+        conn = _db()
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY,
+                mode TEXT,
+                target TEXT,
+                status TEXT,
+                result TEXT,
+                created REAL
+            )
+            """
+        )
+        conn.commit()
+        conn.close()
+
+
+def _insert_task(task_id, mode, target):
+    with _db_lock:
+        conn = _db()
+        conn.execute(
+            "INSERT INTO tasks VALUES (?,?,?,?,?,?)",
+            (task_id, mode, target, "running", None, time.time()),
+        )
+        conn.commit()
+        conn.close()
+
+
+def _update_task(task_id, status, result):
+    with _db_lock:
+        conn = _db()
+        conn.execute(
+            "UPDATE tasks SET status=?, result=? WHERE id=?",
+            (status, json.dumps(result, ensure_ascii=False), task_id),
+        )
+        conn.commit()
+        conn.close()
+
+
+def _row_to_task(row, with_result=False):
+    task = {"task_id": row[0], "mode": row[1], "target": row[2], "status": row[3], "created": row[5]}
+    if with_result:
+        task["result"] = json.loads(row[4]) if row[4] else None
+    return task
+
+
+_init_db()
+
+
+# ---------------- 扫描任务 ----------------
 
 def _scan_job(req: ScanRequest):
-    """完整扫描任务体"""
     ok, code = common.target_alive(req.url)
     if not ok:
         return {"target": req.url, "alive": False, "error": "目标无法连接"}
@@ -65,24 +124,21 @@ def _scan_job(req: ScanRequest):
     return report.build_report(req.url, findings)
 
 
-def _submit(job):
-    """提交一个后台任务，返回 task_id"""
+def _submit(mode, target, job):
     task_id = uuid.uuid4().hex[:12]
-    TASKS[task_id] = {"status": "running", "result": None, "created": time.time()}
+    _insert_task(task_id, mode, target)
 
     def wrapper():
         try:
-            TASKS[task_id]["result"] = job()
-            TASKS[task_id]["status"] = "done"
+            _update_task(task_id, "done", job())
         except Exception as e:  # noqa: BLE001
-            TASKS[task_id]["status"] = "error"
-            TASKS[task_id]["error"] = str(e)
+            _update_task(task_id, "error", {"error": str(e)})
 
     threading.Thread(target=wrapper, daemon=True).start()
     return task_id
 
 
-# ---------- 页面 ----------
+# ---------------- 页面 ----------------
 
 @app.get("/", include_in_schema=False)
 def index():
@@ -91,43 +147,56 @@ def index():
 
 @app.get("/api/info")
 def info():
-    return {"name": "Web 安全扫描器", "version": "2.1.0", "docs": "/docs"}
+    return {"name": "Web 安全扫描器", "version": "2.2.0", "docs": "/docs"}
 
 
-# ---------- 提交任务（异步） ----------
+# ---------------- 提交任务（异步） ----------------
 
 @app.post("/scan")
 def do_scan(req: ScanRequest):
-    """完整扫描：提交后返回 task_id"""
-    task_id = _submit(lambda: _scan_job(req))
+    task_id = _submit("scan", req.url, lambda: _scan_job(req))
     return {"task_id": task_id, "status": "running"}
 
 
 @app.post("/sqli")
 def do_sqli(req: InjectRequest):
-    """SQL 注入检测：提交后返回 task_id"""
-    task_id = _submit(lambda: sqli.sqli_check(req.url, data=req.data, param=req.param))
+    task_id = _submit("sqli", req.url, lambda: sqli.sqli_check(req.url, data=req.data, param=req.param))
     return {"task_id": task_id, "status": "running"}
 
 
 @app.post("/xss")
 def do_xss(req: InjectRequest):
-    """反射型 XSS 检测：提交后返回 task_id"""
-    task_id = _submit(lambda: xss.xss_check(req.url, data=req.data, param=req.param))
+    task_id = _submit("xss", req.url, lambda: xss.xss_check(req.url, data=req.data, param=req.param))
     return {"task_id": task_id, "status": "running"}
 
 
-# ---------- 查询任务 ----------
+# ---------------- 查询 / 管理任务 ----------------
 
 @app.get("/task/{task_id}")
 def get_task(task_id: str):
-    """查询任务状态与结果"""
-    if task_id not in TASKS:
+    with _db_lock:
+        conn = _db()
+        row = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        conn.close()
+    if not row:
         return {"error": "任务不存在"}
-    return TASKS[task_id]
+    return _row_to_task(row, with_result=True)
 
 
 @app.get("/tasks")
 def list_tasks():
-    """列出所有任务"""
-    return [{"task_id": k, "status": v["status"]} for k, v in TASKS.items()]
+    with _db_lock:
+        conn = _db()
+        rows = conn.execute("SELECT * FROM tasks ORDER BY created DESC").fetchall()
+        conn.close()
+    return [_row_to_task(r) for r in rows]
+
+
+@app.delete("/task/{task_id}")
+def delete_task(task_id: str):
+    with _db_lock:
+        conn = _db()
+        conn.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+        conn.commit()
+        conn.close()
+    return {"ok": True}
