@@ -27,6 +27,8 @@ def render(findings):
             _render_sqli(r)
         elif m == "xss":
             _render_xss(r)
+        elif m == "rce":
+            _render_rce(r)
 
 
 def _render_fingerprint(r):
@@ -67,6 +69,18 @@ def _render_xss(r):
         return
     if r.get("vulnerable"):
         print("      [高危] 反射型 XSS")
+        print(f"      payload: {r.get('payload')}")
+    else:
+        print(f"      {r.get('detail') or '未发现'}")
+
+
+def _render_rce(r):
+    print(f"  [*] 命令注入检测: {r.get('target')}  参数: {r.get('param')}")
+    if r.get("error"):
+        print(f"      [!] {r['error']}")
+        return
+    if r.get("vulnerable"):
+        print("      [高危] 命令注入")
         print(f"      payload: {r.get('payload')}")
     else:
         print(f"      {r.get('detail') or '未发现'}")

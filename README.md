@@ -11,6 +11,7 @@
 - **目录扫描**：多线程 + 字典爆破目录
 - **SQL 注入检测**：错误回显 + 布尔盲注 + 时间盲注
 - **反射型 XSS 检测**：payload 回显检测（支持 GET / POST）
+- **命令注入检测**：注入额外系统命令，检测输出回显
 - **结果结构化**：dict 结果 + JSON 报告，便于接入 API / 前端
 
 ## 环境
@@ -39,6 +40,9 @@ python main.py --sqli "http://127.0.0.1/pikachu/vul/sqli/sqli_blind_t.php?name=1
 # 反射型 XSS 检测
 python main.py --xss "http://127.0.0.1/pikachu/vul/xss/xss_reflected_get.php?message=test"
 
+# 命令注入检测（POST 靶子，用 --data）
+python main.py --rce "http://127.0.0.1/pikachu/vul/rce/rce_ping.php" --data "ipaddress=127.0.0.1&submit=1"
+
 # 输出 JSON 报告
 python main.py -u http://127.0.0.1/pikachu -o report.json
 ```
@@ -56,7 +60,7 @@ uvicorn api:app --reload --host 127.0.0.1 --port 8000
 
 **异步任务流程**：先提交任务拿到 `task_id`，再轮询取结果。
 
-- `POST /scan`、`POST /sqli`、`POST /xss`：提交任务，返回 `{"task_id": "...", "status": "running"}`
+- `POST /scan`、`POST /sqli`、`POST /xss`、`POST /rce`：提交任务，返回 `{"task_id": "...", "status": "running"}`
 - `GET /task/{task_id}`：查询任务状态与结果（`running` / `done` / `error`）
 - `GET /tasks`：任务列表（历史记录）
 - `DELETE /task/{task_id}`：删除一条历史记录
@@ -88,6 +92,7 @@ scanner/             扫描引擎包
   ├─ dirscan.py      目录扫描
   ├─ sqli.py         SQL 注入检测
   ├─ xss.py          XSS 检测
+  ├─ rce.py          命令注入检测
   └─ report.py       结果汇总 + JSON 报告
 dict.txt             目录字典（小）
 requirements.txt     依赖

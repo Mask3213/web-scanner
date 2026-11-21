@@ -67,6 +67,7 @@
   .btn-scan { background: var(--accent); }
   .btn-sqli { background: var(--accent2); color: #1e293b; }
   .btn-xss  { background: #8b5cf6; }
+  .btn-rce  { background: #14b8a6; }
   #status { color: var(--accent); margin-bottom: 12px; font-size: 14px; }
   .err { background: rgba(239,68,68,.15); border: 1px solid var(--danger); color: #fca5a5; padding: 12px 14px; border-radius: 8px; margin-bottom: 12px; }
   .head { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
@@ -106,7 +107,9 @@
 
   <div class="card">
     <label>目标地址</label>
-    <input id="url" placeholder="如 http://127.0.0.1/pikachu（SQLi/XSS 请填带参数的完整 URL）">
+    <input id="url" placeholder="如 http://127.0.0.1/pikachu（SQLi/XSS/命令注入 请填带参数的完整 URL）">
+    <label>POST 数据（可选，仅 SQL注入/XSS/命令注入 用）</label>
+    <input id="data" placeholder="如 ipaddress=127.0.0.1&submit=1">
     <div class="row">
       <div>
         <label>目录字典（完整扫描用）</label>
@@ -121,6 +124,7 @@
       <button class="btn-scan" onclick="run('scan')">完整扫描</button>
       <button class="btn-sqli" onclick="run('sqli')">SQL 注入</button>
       <button class="btn-xss"  onclick="run('xss')">XSS 检测</button>
+      <button class="btn-rce"  onclick="run('rce')">命令注入</button>
     </div>
   </div>
 
@@ -146,6 +150,7 @@ async function run(mode) {
   if (!url) { alert('请输入目标地址'); return; }
   const status = document.getElementById('status');
   const result = document.getElementById('result');
+  const data = document.getElementById('data').value.trim();
   status.textContent = '提交任务中…';
   result.innerHTML = '';
   let path, body;
@@ -154,9 +159,12 @@ async function run(mode) {
     body = { url, wordlist: document.getElementById('wordlist').value, threads: +document.getElementById('threads').value };
   } else if (mode === 'sqli') {
     path = '/sqli'; body = { url };
+  } else if (mode === 'rce') {
+    path = '/rce'; body = { url };
   } else {
     path = '/xss'; body = { url };
   }
+  if (data && mode !== 'scan') body.data = data;
   try {
     const resp = await fetch(path, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
     const data = await resp.json();
@@ -195,7 +203,7 @@ async function poll(taskId, mode) {
 }
 
 // ---------------- 历史记录 ----------------
-const MODE_NAME = { scan: '完整扫描', sqli: 'SQL注入', xss: 'XSS' };
+const MODE_NAME = { scan: '完整扫描', sqli: 'SQL注入', xss: 'XSS', rce: '命令注入' };
 
 async function loadHistory() {
   const el = document.getElementById('history');
@@ -306,6 +314,17 @@ function finding(f) {
     if (f.error) return h + '<div class="err">' + esc(f.error) + '</div></div>';
     if (f.vulnerable) {
       h += '<div class="item"><span class="badge badge-danger">反射型 XSS</span>' + esc(f.detail || '') + '</div>';
+      h += '<div class="item"><span class="kv">payload：</span><code>' + esc(f.payload) + '</code></div>';
+    } else {
+      h += '<div class="item"><span class="badge badge-ok">' + esc(f.detail || '未发现') + '</span></div>';
+    }
+    return h + '</div>';
+  }
+  if (m === 'rce') {
+    let h = '<div class="block"><h3>💻 命令注入检测 <span class="kv">参数：' + esc(f.param || '-') + '</span></h3>';
+    if (f.error) return h + '<div class="err">' + esc(f.error) + '</div></div>';
+    if (f.vulnerable) {
+      h += '<div class="item"><span class="badge badge-danger">命令注入</span>' + esc(f.detail || '') + '</div>';
       h += '<div class="item"><span class="kv">payload：</span><code>' + esc(f.payload) + '</code></div>';
     } else {
       h += '<div class="item"><span class="badge badge-ok">' + esc(f.detail || '未发现') + '</span></div>';

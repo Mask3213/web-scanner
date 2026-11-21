@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, report
+from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, rce, report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -167,6 +167,13 @@ def do_sqli(req: InjectRequest):
 @app.post("/xss")
 def do_xss(req: InjectRequest):
     task_id = _submit("xss", req.url, lambda: xss.xss_check(req.url, data=req.data, param=req.param))
+    return {"task_id": task_id, "status": "running"}
+
+
+@app.post("/rce")
+def do_rce(req: InjectRequest):
+    """命令注入检测：提交后返回 task_id"""
+    task_id = _submit("rce", req.url, lambda: rce.rce_check(req.url, data=req.data, param=req.param))
     return {"task_id": task_id, "status": "running"}
 
 
