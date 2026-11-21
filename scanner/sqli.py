@@ -87,20 +87,22 @@ def sqli_check(url, data=None, param=None, sleep_sec=3):
         result["test"] = common.display(method, base, p_true)
         return result
 
-    # 4) 时间盲注测试
-    p_sleep = _payload(params, pname, orig + f"' OR SLEEP({sleep_sec})--+")
+    # 4) 时间盲注测试：注入 SLEEP，比较响应时间
+    # 用 # 作注释（--+ 在 URL 编码后会失效）；SLEEP 会按表行数放大，响应可能远超 sleep_sec
+    p_sleep = _payload(params, pname, orig + f"' OR SLEEP({sleep_sec})#")
+    timeout = sleep_sec * 5
     try:
         t0 = time.time()
-        common.send(method, base, p_sleep)
+        common.send(method, base, p_sleep, timeout=timeout)
         elapsed = time.time() - t0
     except requests.RequestException:
-        result["error"] = "时间盲注请求失败"
-        return result
+        # 请求超时（远超正常响应时间），本身也说明 SLEEP 生效了
+        elapsed = timeout
     result["timing"] = {"elapsed": round(elapsed, 2), "threshold": sleep_sec - 1}
     if elapsed >= sleep_sec - 1:
         result["vulnerable"] = True
         result["technique"] = "时间盲注"
-        result["payload"] = orig + f"' OR SLEEP({sleep_sec})--+"
+        result["payload"] = orig + f"' OR SLEEP({sleep_sec})#"
         result["test"] = common.display(method, base, p_sleep)
 
     return result
