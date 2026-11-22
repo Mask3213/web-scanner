@@ -41,11 +41,19 @@ def pick_param(params, param=None):
     return next(iter(params), None)
 
 
-def send(method, url, params, timeout=5):
-    """按方法发请求（GET 用 query，POST 用 body）"""
+def send(method, url, params, timeout=5, session=None):
+    """按方法发请求（GET 用 query，POST 用 body）；可传入带登录态的 Session"""
+    req = session if session else requests
     if method == "POST":
-        return requests.post(url, data=params, timeout=timeout)
-    return requests.get(url, params=params, timeout=timeout)
+        return req.post(url, data=params, timeout=timeout)
+    return req.get(url, params=params, timeout=timeout)
+
+
+def login(login_url, data):
+    """登录并返回带 cookie 的 Session（用于需要登录的靶子）"""
+    s = requests.Session()
+    s.post(login_url, data=data, timeout=5)
+    return s
 
 
 def display(method, url, params):

@@ -5,7 +5,7 @@ import requests
 from . import common
 
 
-def xss_check(url, data=None, param=None):
+def xss_check(url, data=None, param=None, session=None):
     """对指定参数做反射型 XSS 检测，返回结构化结果"""
     method, base, params = common.parse_target(url, data)
     pname = common.pick_param(params, param)
@@ -31,7 +31,7 @@ def xss_check(url, data=None, param=None):
     result["test"] = common.display(method, base, params)
 
     try:
-        r = common.send(method, base, params)
+        r = common.send(method, base, params, session=session)
     except requests.RequestException as e:
         result["error"] = str(e)
         return result

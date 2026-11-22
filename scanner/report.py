@@ -29,6 +29,8 @@ def render(findings):
             _render_xss(r)
         elif m == "rce":
             _render_rce(r)
+        elif m == "stored_xss":
+            _render_stored_xss(r)
 
 
 def _render_fingerprint(r):
@@ -81,6 +83,18 @@ def _render_rce(r):
         return
     if r.get("vulnerable"):
         print("      [高危] 命令注入")
+        print(f"      payload: {r.get('payload')}")
+    else:
+        print(f"      {r.get('detail') or '未发现'}")
+
+
+def _render_stored_xss(r):
+    print(f"  [*] 存储型 XSS 检测: {r.get('target')}  参数: {r.get('param')}")
+    if r.get("error"):
+        print(f"      [!] {r['error']}")
+        return
+    if r.get("vulnerable"):
+        print("      [高危] 存储型 XSS")
         print(f"      payload: {r.get('payload')}")
     else:
         print(f"      {r.get('detail') or '未发现'}")

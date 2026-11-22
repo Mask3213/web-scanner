@@ -20,7 +20,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, rce, report
+from urllib.parse import parse_qsl
+
+from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -50,6 +52,8 @@ class InjectRequest(BaseModel):
     url: str = Field(..., description="带参数的 URL")
     data: str | None = Field(None, description="POST 请求体，如 name=1")
     param: str | None = Field(None, description="指定参数名")
+    login_url: str | None = Field(None, description="登录页地址（可选，需要登录的靶子用）")
+    login_data: str | None = Field(None, description="登录表单数据，如 username=admin&password=123456&submit=1")
 
 
 # ---------------- SQLite 存储 ----------------
@@ -138,6 +142,14 @@ def _submit(mode, target, job):
     return task_id
 
 
+def _login(req: InjectRequest):
+    """如果请求里带了登录信息，就登录并返回 session"""
+    if req.login_url:
+        data = dict(parse_qsl(req.login_data or "", keep_blank_values=True))
+        return common.login(req.login_url, data)
+    return None
+
+
 # ---------------- 页面 ----------------
 
 @app.get("/", include_in_schema=False)
@@ -166,7 +178,8 @@ def do_sqli(req: InjectRequest):
 
 @app.post("/xss")
 def do_xss(req: InjectRequest):
-    task_id = _submit("xss", req.url, lambda: xss.xss_check(req.url, data=req.data, param=req.param))
+    session = _login(req)
+    task_id = _submit("xss", req.url, lambda: xss.xss_check(req.url, data=req.data, param=req.param, session=session))
     return {"task_id": task_id, "status": "running"}
 
 
@@ -174,6 +187,18 @@ def do_xss(req: InjectRequest):
 def do_rce(req: InjectRequest):
     """命令注入检测：提交后返回 task_id"""
     task_id = _submit("rce", req.url, lambda: rce.rce_check(req.url, data=req.data, param=req.param))
+    return {"task_id": task_id, "status": "running"}
+
+
+@app.post("/stored-xss")
+def do_stored_xss(req: InjectRequest):
+    """存储型 XSS 检测：提交后返回 task_id"""
+    session = _login(req)
+    task_id = _submit(
+        "stored_xss",
+        req.url,
+        lambda: stored_xss.stored_xss_check(req.url, param=req.param or "message", session=session),
+    )
     return {"task_id": task_id, "status": "running"}
 
 
