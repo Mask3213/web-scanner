@@ -107,6 +107,27 @@
   </header>
 
   <div class="card">
+    <div class="card-head">
+      <h3>🔐 登录</h3>
+      <span id="login-status" style="color:var(--muted);font-size:13px;">未登录</span>
+    </div>
+    <div class="row">
+      <div>
+        <label>用户名</label>
+        <input id="login_username" placeholder="admin">
+      </div>
+      <div>
+        <label>密码</label>
+        <input id="login_password" type="password" placeholder="admin123">
+      </div>
+    </div>
+    <div class="buttons">
+      <button class="btn-scan" onclick="doLogin()">登录</button>
+      <button class="btn-refresh" onclick="doLogout()">退出</button>
+    </div>
+  </div>
+
+  <div class="card">
     <label>目标地址</label>
     <input id="url" placeholder="如 http://127.0.0.1/pikachu（SQLi/XSS/命令注入 请填带参数的完整 URL）">
     <label>POST 数据（可选，仅 SQL注入/XSS/命令注入 用）</label>
@@ -150,6 +171,46 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// ---------------- 登录 / 鉴权 ----------------
+function getKey() { return localStorage.getItem('api_key') || ''; }
+
+function authHeaders(extra) {
+  const h = extra || {};
+  const k = getKey();
+  if (k) h['X-API-Key'] = k;
+  return h;
+}
+
+async function doLogin() {
+  const username = document.getElementById('login_username').value.trim();
+  const password = document.getElementById('login_password').value.trim();
+  try {
+    const resp = await fetch('/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({username, password}) });
+    const data = await resp.json();
+    if (data.api_key) {
+      localStorage.setItem('api_key', data.api_key);
+      localStorage.setItem('username', data.username);
+      updateLoginStatus();
+      loadHistory();
+    } else {
+      alert('登录失败：' + (data.detail || '用户名或密码错误'));
+    }
+  } catch (e) { alert('登录请求失败：' + e); }
+}
+
+function doLogout() {
+  localStorage.removeItem('api_key');
+  localStorage.removeItem('username');
+  updateLoginStatus();
+  document.getElementById('result').innerHTML = '';
+  document.getElementById('history').innerHTML = '<div class="head">请先登录后查看历史</div>';
+}
+
+function updateLoginStatus() {
+  const u = localStorage.getItem('username');
+  document.getElementById('login-status').textContent = u ? '已登录：' + u : '未登录';
+}
+
 async function run(mode) {
   const url = document.getElementById('url').value.trim();
   if (!url) { alert('请输入目标地址'); return; }
@@ -176,7 +237,7 @@ async function run(mode) {
   if (data && mode !== 'scan') body.data = data;
   if (loginUrl && mode !== 'scan') { body.login_url = loginUrl; body.login_data = loginData; }
   try {
-    const resp = await fetch(path, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    const resp = await fetch(path, { method: 'POST', headers: authHeaders({'Content-Type': 'application/json'}), body: JSON.stringify(body) });
     const data = await resp.json();
     if (data.task_id) {
       poll(data.task_id, mode);
@@ -194,7 +255,7 @@ async function poll(taskId, mode) {
   const status = document.getElementById('status');
   const result = document.getElementById('result');
   try {
-    const resp = await fetch('/task/' + taskId);
+    const resp = await fetch('/task/' + taskId, { headers: authHeaders() });
     const t = await resp.json();
     if (t.status === 'running') {
       status.textContent = '扫描中，请稍候…';
@@ -217,8 +278,9 @@ const MODE_NAME = { scan: '完整扫描', sqli: 'SQL注入', xss: 'XSS', rce: '�
 
 async function loadHistory() {
   const el = document.getElementById('history');
+  if (!getKey()) { el.innerHTML = '<div class="head">请先登录后查看历史</div>'; return; }
   try {
-    const resp = await fetch('/tasks');
+    const resp = await fetch('/tasks', { headers: authHeaders() });
     const tasks = await resp.json();
     if (!tasks.length) { el.innerHTML = '<div class="head">暂无记录</div>'; return; }
     el.innerHTML = tasks.map(historyItem).join('');
@@ -250,7 +312,7 @@ async function viewTask(taskId, mode) {
   const status = document.getElementById('status');
   const result = document.getElementById('result');
   try {
-    const resp = await fetch('/task/' + taskId);
+    const resp = await fetch('/task/' + taskId, { headers: authHeaders() });
     const t = await resp.json();
     if (t.status === 'running') {
       status.textContent = '任务仍在进行…';
@@ -269,7 +331,7 @@ async function viewTask(taskId, mode) {
 
 async function deleteTask(taskId) {
   try {
-    await fetch('/task/' + taskId, { method: 'DELETE' });
+    await fetch('/task/' + taskId, { method: 'DELETE', headers: authHeaders() });
     loadHistory();
   } catch (e) {
     alert('删除失败：' + e);
@@ -356,7 +418,7 @@ function finding(f) {
 }
 
 // 页面加载时读取历史记录
-window.addEventListener('DOMContentLoaded', loadHistory);
+window.addEventListener('DOMContentLoaded', () => { updateLoginStatus(); loadHistory(); });
 </script>
 </body>
 </html>

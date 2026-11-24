@@ -8,14 +8,16 @@
 扫描流程：POST /scan 提交任务 → 得到 task_id → 轮询 GET /task/{task_id}
 历史记录：GET /tasks 列表，DELETE /task/{task_id} 删除，数据存 SQLite（重启不丢）
 """
+import hashlib
 import json
 import os
+import secrets
 import sqlite3
 import threading
 import time
 import uuid
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -30,8 +32,8 @@ DB_PATH = os.path.join(BASE_DIR, "tasks.db")
 
 app = FastAPI(
     title="Web 安全扫描器",
-    description="提供指纹识别、敏感文件检测、目录扫描、SQL 注入、XSS 检测的 REST API（异步任务 + 持久化）",
-    version="2.2.0",
+    description="提供指纹识别、敏感文件检测、目录扫描、SQL 注入、XSS、命令注入、存储型 XSS 检测的 REST API（异步任务 + 持久化 + API Key 鉴权）",
+    version="2.3.0",
 )
 
 app.add_middleware(
@@ -56,6 +58,11 @@ class InjectRequest(BaseModel):
     login_data: str | None = Field(None, description="登录表单数据，如 username=admin&password=123456&submit=1")
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(..., description="用户名")
+    password: str = Field(..., description="密码")
+
+
 # ---------------- SQLite 存储 ----------------
 _db_lock = threading.Lock()
 
@@ -77,6 +84,16 @@ def _init_db():
                 status TEXT,
                 result TEXT,
                 created REAL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                password_hash TEXT,
+                salt TEXT,
+                api_key TEXT
             )
             """
         )
@@ -114,6 +131,61 @@ def _row_to_task(row, with_result=False):
 
 
 _init_db()
+
+
+# ---------------- 鉴权 ----------------
+
+def _hash_password(password, salt):
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 100000).hex()
+
+
+def _gen_api_key():
+    return secrets.token_hex(24)
+
+
+def _init_auth():
+    """初始化用户表；没有用户时创建默认 admin 账号"""
+    with _db_lock:
+        conn = _db()
+        row = conn.execute("SELECT COUNT(*) FROM users").fetchone()
+        if row[0] == 0:
+            salt = secrets.token_hex(16)
+            default_pw = os.environ.get("SCANNER_ADMIN_PASSWORD", "admin123")
+            conn.execute(
+                "INSERT INTO users VALUES (?,?,?,?)",
+                ("admin", _hash_password(default_pw, salt), salt, _gen_api_key()),
+            )
+            print(f"[*] 已创建默认管理员账号：admin / {default_pw}")
+        conn.commit()
+        conn.close()
+
+
+def _verify_user(username, password):
+    with _db_lock:
+        conn = _db()
+        row = conn.execute("SELECT username, password_hash, salt, api_key FROM users WHERE username=?", (username,)).fetchone()
+        conn.close()
+    if row and _hash_password(password, row[2]) == row[1]:
+        return {"username": row[0], "api_key": row[3]}
+    return None
+
+
+def _valid_api_key(api_key):
+    with _db_lock:
+        conn = _db()
+        row = conn.execute("SELECT username FROM users WHERE api_key=?", (api_key,)).fetchone()
+        conn.close()
+    return row is not None
+
+
+def require_api_key(x_api_key: str = Header(None)):
+    """FastAPI 依赖：校验请求头里的 X-API-Key"""
+    if not x_api_key or not _valid_api_key(x_api_key):
+        raise HTTPException(status_code=401, detail="无效或缺失的 API Key（请在请求头加 X-API-Key）")
+    return x_api_key
+
+
+_init_auth()
 
 
 # ---------------- 扫描任务 ----------------
@@ -159,39 +231,48 @@ def index():
 
 @app.get("/api/info")
 def info():
-    return {"name": "Web 安全扫描器", "version": "2.2.0", "docs": "/docs"}
+    return {"name": "Web 安全扫描器", "version": "2.3.0", "docs": "/docs"}
+
+
+@app.post("/login")
+def login(req: LoginRequest):
+    """登录获取 API Key（用账号密码换 key）"""
+    user = _verify_user(req.username, req.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    return {"username": user["username"], "api_key": user["api_key"]}
 
 
 # ---------------- 提交任务（异步） ----------------
 
 @app.post("/scan")
-def do_scan(req: ScanRequest):
+def do_scan(req: ScanRequest, api_key: str = Depends(require_api_key)):
     task_id = _submit("scan", req.url, lambda: _scan_job(req))
     return {"task_id": task_id, "status": "running"}
 
 
 @app.post("/sqli")
-def do_sqli(req: InjectRequest):
+def do_sqli(req: InjectRequest, api_key: str = Depends(require_api_key)):
     task_id = _submit("sqli", req.url, lambda: sqli.sqli_check(req.url, data=req.data, param=req.param))
     return {"task_id": task_id, "status": "running"}
 
 
 @app.post("/xss")
-def do_xss(req: InjectRequest):
+def do_xss(req: InjectRequest, api_key: str = Depends(require_api_key)):
     session = _login(req)
     task_id = _submit("xss", req.url, lambda: xss.xss_check(req.url, data=req.data, param=req.param, session=session))
     return {"task_id": task_id, "status": "running"}
 
 
 @app.post("/rce")
-def do_rce(req: InjectRequest):
+def do_rce(req: InjectRequest, api_key: str = Depends(require_api_key)):
     """命令注入检测：提交后返回 task_id"""
     task_id = _submit("rce", req.url, lambda: rce.rce_check(req.url, data=req.data, param=req.param))
     return {"task_id": task_id, "status": "running"}
 
 
 @app.post("/stored-xss")
-def do_stored_xss(req: InjectRequest):
+def do_stored_xss(req: InjectRequest, api_key: str = Depends(require_api_key)):
     """存储型 XSS 检测：提交后返回 task_id"""
     session = _login(req)
     task_id = _submit(
@@ -205,7 +286,7 @@ def do_stored_xss(req: InjectRequest):
 # ---------------- 查询 / 管理任务 ----------------
 
 @app.get("/task/{task_id}")
-def get_task(task_id: str):
+def get_task(task_id: str, api_key: str = Depends(require_api_key)):
     with _db_lock:
         conn = _db()
         row = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
@@ -216,7 +297,7 @@ def get_task(task_id: str):
 
 
 @app.get("/tasks")
-def list_tasks():
+def list_tasks(api_key: str = Depends(require_api_key)):
     with _db_lock:
         conn = _db()
         rows = conn.execute("SELECT * FROM tasks ORDER BY created DESC").fetchall()
@@ -225,7 +306,7 @@ def list_tasks():
 
 
 @app.delete("/task/{task_id}")
-def delete_task(task_id: str):
+def delete_task(task_id: str, api_key: str = Depends(require_api_key)):
     with _db_lock:
         conn = _db()
         conn.execute("DELETE FROM tasks WHERE id=?", (task_id,))

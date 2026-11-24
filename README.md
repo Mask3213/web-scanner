@@ -14,6 +14,7 @@
 - **命令注入检测**：注入额外系统命令，检测输出回显
 - **存储型 XSS 检测**：提交 payload 后检测是否持久化回显
 - **会话登录**：支持需要登录的靶子（自动登录 + cookie）
+- **API Key 鉴权**：登录获取 API Key，所有扫描 / 查询接口需携带 X-API-Key
 - **结果结构化**：dict 结果 + JSON / HTML 报告，便于接入 API / 前端
 
 ## 环境
@@ -74,6 +75,17 @@ uvicorn api:app --reload --host 127.0.0.1 --port 8000
 - `DELETE /task/{task_id}`：删除一条历史记录
 
 任务与结果存 SQLite（`tasks.db`），**重启服务不丢失**。
+
+**鉴权**：所有扫描 / 查询接口都需要 `X-API-Key` 请求头。先登录获取 key（默认账号 `admin` / `admin123`，可通过环境变量 `SCANNER_ADMIN_PASSWORD` 修改密码）：
+
+```bash
+curl -X POST http://127.0.0.1:8000/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin123"}'
+# 返回 {"username":"admin","api_key":"..."}
+```
+
+之后请求带上 key：`-H "X-API-Key: 你的key"`
 
 示例：
 
