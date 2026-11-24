@@ -5,7 +5,7 @@
   python main.py -u http://127.0.0.1/pikachu -w dict.txt
   python main.py --sqli "http://127.0.0.1/pikachu/vul/sqli/sqli_str.php?id=1"
   python main.py --xss  "http://127.0.0.1/pikachu/vul/xss/xss_reflected_get.php?message=test"
-  python main.py -u http://127.0.0.1/pikachu -o report.json   # 输出 JSON 报告
+  python main.py -u http://127.0.0.1/pikachu -o report.html  # 输出 HTML 报告（.json 则输出 JSON）
 """
 import argparse
 
@@ -27,7 +27,7 @@ def main():
     parser.add_argument("--login", metavar="URL", help="登录页地址（需要登录的靶子用）")
     parser.add_argument("--login-data", metavar="k=v", help="登录表单数据，如 username=admin&password=123456&submit=1")
     parser.add_argument("--param", metavar="NAME", help="指定要检测的参数名（默认自动选第一个非 submit 参数）")
-    parser.add_argument("-o", "--output", metavar="FILE", help="保存 JSON 报告到文件")
+    parser.add_argument("-o", "--output", metavar="FILE", help="保存报告到文件（.html 生成网页报告，否则生成 JSON）")
     args = parser.parse_args()
 
     findings = []
@@ -64,9 +64,14 @@ def main():
     report.render(findings)
 
     if args.output:
-        rep = report.build_report(args.url or args.sqli or args.xss, findings)
-        report.save_json(rep, args.output)
-        print(f"[*] JSON 报告已保存: {args.output}")
+        target = args.url or args.sqli or args.xss or args.rce or args.stored_xss
+        rep = report.build_report(target, findings)
+        if args.output.lower().endswith(".html"):
+            report.save_html(rep, args.output)
+            print(f"[*] HTML 报告已保存: {args.output}")
+        else:
+            report.save_json(rep, args.output)
+            print(f"[*] JSON 报告已保存: {args.output}")
 
     print("\n[*] 扫描完成")
 

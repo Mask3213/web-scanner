@@ -14,7 +14,7 @@
 - **命令注入检测**：注入额外系统命令，检测输出回显
 - **存储型 XSS 检测**：提交 payload 后检测是否持久化回显
 - **会话登录**：支持需要登录的靶子（自动登录 + cookie）
-- **结果结构化**：dict 结果 + JSON 报告，便于接入 API / 前端
+- **结果结构化**：dict 结果 + JSON / HTML 报告，便于接入 API / 前端
 
 ## 环境
 
@@ -51,8 +51,8 @@ python main.py --stored-xss "http://127.0.0.1/pikachu/vul/xss/xss_stored.php"
 # 需要登录的 POST XSS（先登录再测）
 python main.py --xss "http://127.0.0.1/pikachu/vul/xss/xsspost/xss_reflected_post.php" --data "message=test&submit=1" --login "http://127.0.0.1/pikachu/vul/xss/xsspost/post_login.php" --login-data "username=admin&password=123456&submit=1"
 
-# 输出 JSON 报告
-python main.py -u http://127.0.0.1/pikachu -o report.json
+# 输出报告（.html 生成网页报告，.json 生成 JSON）
+python main.py -u http://127.0.0.1/pikachu -o report.html
 ```
 
 ## REST API 使用
