@@ -13,7 +13,9 @@
 - **反射型 XSS 检测**：payload 回显检测（支持 GET / POST）
 - **命令注入检测**：注入额外系统命令，检测输出回显
 - **存储型 XSS 检测**：提交 payload 后检测是否持久化回显
+- **文件包含（LFI）检测**：目录穿越读取敏感文件
 - **会话登录**：支持需要登录的靶子（自动登录 + cookie）
+- **限流**：按 IP 滑动窗口限流，防止滥用（默认 60 次/分钟，可用 `SCANNER_RATE_LIMIT` / `SCANNER_RATE_WINDOW` 环境变量调整）
 - **API Key 鉴权**：登录获取 API Key，所有扫描 / 查询接口需携带 X-API-Key
 - **结果结构化**：dict 结果 + JSON / HTML 报告，便于接入 API / 前端
 
@@ -49,6 +51,9 @@ python main.py --rce "http://127.0.0.1/pikachu/vul/rce/rce_ping.php" --data "ipa
 # 存储型 XSS 检测（无需登录）
 python main.py --stored-xss "http://127.0.0.1/pikachu/vul/xss/xss_stored.php"
 
+# 文件包含(LFI)检测
+python main.py --lfi "http://127.0.0.1/pikachu/vul/fileinclude/fi_local.php?filename=file1.php&submit=1"
+
 # 需要登录的 POST XSS（先登录再测）
 python main.py --xss "http://127.0.0.1/pikachu/vul/xss/xsspost/xss_reflected_post.php" --data "message=test&submit=1" --login "http://127.0.0.1/pikachu/vul/xss/xsspost/post_login.php" --login-data "username=admin&password=123456&submit=1"
 
@@ -69,7 +74,7 @@ uvicorn api:app --reload --host 127.0.0.1 --port 8000
 
 **异步任务流程**：先提交任务拿到 `task_id`，再轮询取结果。
 
-- `POST /scan`、`POST /sqli`、`POST /xss`、`POST /rce`、`POST /stored-xss`：提交任务，返回 `{"task_id": "...", "status": "running"}`
+- `POST /scan`、`POST /sqli`、`POST /xss`、`POST /rce`、`POST /stored-xss`、`POST /lfi`：提交任务，返回 `{"task_id": "...", "status": "running"}`
 - `GET /task/{task_id}`：查询任务状态与结果（`running` / `done` / `error`）
 - `GET /tasks`：任务列表（历史记录）
 - `DELETE /task/{task_id}`：删除一条历史记录
@@ -114,6 +119,7 @@ scanner/             扫描引擎包
   ├─ xss.py          XSS 检测（反射型）
   ├─ rce.py          命令注入检测
   ├─ stored_xss.py   存储型 XSS 检测
+  ├─ lfi.py          文件包含(LFI)检测
   └─ report.py       结果汇总 + JSON 报告
 dict.txt             目录字典（小）
 requirements.txt     依赖

@@ -8,6 +8,8 @@
 扫描流程：POST /scan 提交任务 → 得到 task_id → 轮询 GET /task/{task_id}
 历史记录：GET /tasks 列表，DELETE /task/{task_id} 删除，数据存 SQLite（重启不丢）
 """
+from collections import deque
+
 import hashlib
 import json
 import os
@@ -19,12 +21,12 @@ import uuid
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from urllib.parse import parse_qsl
 
-from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, report
+from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -42,6 +44,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------- 限流（防滥用） ----------------
+RATE_LIMIT = int(os.environ.get("SCANNER_RATE_LIMIT", "60"))      # 每窗口最多请求数
+RATE_WINDOW = float(os.environ.get("SCANNER_RATE_WINDOW", "60"))  # 窗口秒数
+_rate_records = {}     # ip -> deque[时间戳]
+_rate_lock = threading.Lock()
+
+
+@app.middleware("http")
+async def rate_limit(request, call_next):
+    """按 IP 滑动窗口限流：超过阈值返回 429"""
+    ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    with _rate_lock:
+        rec = _rate_records.setdefault(ip, deque())
+        while rec and now - rec[0] > RATE_WINDOW:
+            rec.popleft()
+        if len(rec) >= RATE_LIMIT:
+            return JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后再试"})
+        rec.append(now)
+    return await call_next(request)
 
 
 class ScanRequest(BaseModel):
@@ -280,6 +304,13 @@ def do_stored_xss(req: InjectRequest, api_key: str = Depends(require_api_key)):
         req.url,
         lambda: stored_xss.stored_xss_check(req.url, param=req.param or "message", session=session),
     )
+    return {"task_id": task_id, "status": "running"}
+
+
+@app.post("/lfi")
+def do_lfi(req: InjectRequest, api_key: str = Depends(require_api_key)):
+    """文件包含(LFI)检测：提交后返回 task_id"""
+    task_id = _submit("lfi", req.url, lambda: lfi.lfi_check(req.url, data=req.data, param=req.param))
     return {"task_id": task_id, "status": "running"}
 
 
