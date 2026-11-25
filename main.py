@@ -11,7 +11,7 @@ import argparse
 
 from urllib.parse import parse_qsl
 
-from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, report
+from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, upload, report
 
 
 def main():
@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--rce", metavar="URL", help="命令注入检测目标（带参数的 URL）")
     parser.add_argument("--stored-xss", metavar="URL", help="存储型 XSS 检测目标（留言/评论类页面）")
     parser.add_argument("--lfi", metavar="URL", help="文件包含(LFI)检测目标（带参数的 URL）")
+    parser.add_argument("--upload", metavar="URL", help="文件上传检测目标（上传接口地址）")
     parser.add_argument("--data", metavar="k=v", help="POST 请求体（配合 --sqli / --xss / --rce），如 name=1")
     parser.add_argument("--login", metavar="URL", help="登录页地址（需要登录的靶子用）")
     parser.add_argument("--login-data", metavar="k=v", help="登录表单数据，如 username=admin&password=123456&submit=1")
@@ -50,9 +51,11 @@ def main():
         findings.append(stored_xss.stored_xss_check(args.stored_xss, session=session))
     elif args.lfi:
         findings.append(lfi.lfi_check(args.lfi))
+    elif args.upload:
+        findings.append(upload.upload_check(args.upload))
     else:
         if not args.url:
-            parser.error("请提供 -u 目标地址，或用 --sqli / --xss / --rce / --stored-xss / --lfi 指定单点检测目标")
+            parser.error("请提供 -u 目标地址，或用 --sqli / --xss / --rce / --stored-xss / --lfi / --upload 指定单点检测目标")
 
         ok, code = common.target_alive(args.url)
         if not ok:

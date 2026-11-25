@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 
 from urllib.parse import parse_qsl
 
-from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, report
+from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, upload, report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -311,6 +311,14 @@ def do_stored_xss(req: InjectRequest, api_key: str = Depends(require_api_key)):
 def do_lfi(req: InjectRequest, api_key: str = Depends(require_api_key)):
     """文件包含(LFI)检测：提交后返回 task_id"""
     task_id = _submit("lfi", req.url, lambda: lfi.lfi_check(req.url, data=req.data, param=req.param))
+    return {"task_id": task_id, "status": "running"}
+
+
+@app.post("/upload")
+def do_upload(req: InjectRequest, api_key: str = Depends(require_api_key)):
+    """任意文件上传检测：提交后返回 task_id"""
+    session = _login(req)
+    task_id = _submit("upload", req.url, lambda: upload.upload_check(req.url, session=session))
     return {"task_id": task_id, "status": "running"}
 
 

@@ -34,6 +34,8 @@ def render(findings):
             _render_stored_xss(r)
         elif m == "lfi":
             _render_lfi(r)
+        elif m == "upload":
+            _render_upload(r)
 
 
 def _render_fingerprint(r):
@@ -115,6 +117,18 @@ def _render_lfi(r):
         print(f"      {r.get('detail') or '未发现'}")
 
 
+def _render_upload(r):
+    print(f"  [*] 文件上传检测: {r.get('target')}")
+    if r.get("error"):
+        print(f"      [!] {r['error']}")
+        return
+    if r.get("vulnerable"):
+        print("      [高危] 任意文件上传")
+        print(f"      payload: {r.get('payload')}")
+    else:
+        print(f"      {r.get('detail') or '未发现'}")
+
+
 def save_json(report, path):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
@@ -158,6 +172,8 @@ def _finding_html(f):
         return _vuln_html("💾 存储型 XSS", f)
     if m == "lfi":
         return _vuln_html("📂 文件包含（LFI）", f)
+    if m == "upload":
+        return _vuln_html("📤 任意文件上传", f)
     return ""
 
 
