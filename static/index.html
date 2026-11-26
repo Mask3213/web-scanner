@@ -18,10 +18,17 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    background: linear-gradient(-45deg, #0f172a, #1e293b, #0f172a, #1e293b);
+    background-size: 400% 400%;
+    animation: bgShift 18s ease infinite;
     color: var(--text);
     min-height: 100vh;
     padding: 40px 20px;
+  }
+  @keyframes bgShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
   }
   .wrap { max-width: 860px; margin: 0 auto; }
   header { text-align: center; margin-bottom: 28px; }
@@ -31,9 +38,10 @@
   .card {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 24px;
     margin-bottom: 20px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.28);
   }
   label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
   input {
@@ -61,9 +69,10 @@
     font-weight: 600;
     cursor: pointer;
     color: #fff;
-    transition: opacity .15s;
+    transition: transform .15s, box-shadow .15s, opacity .15s;
   }
-  button:hover { opacity: .85; }
+  button:hover { opacity: .92; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.3); }
+  button:active { transform: translateY(0); }
   .btn-scan { background: var(--accent); }
   .btn-sqli { background: var(--accent2); color: #1e293b; }
   .btn-xss  { background: #8b5cf6; }
@@ -71,6 +80,7 @@
   .btn-stored { background: #ec4899; }
   .btn-lfi { background: #f97316; }
   .btn-upload { background: #22c55e; }
+  .btn-register { background: #6366f1; }
   #status { color: var(--accent); margin-bottom: 12px; font-size: 14px; }
   .err { background: rgba(239,68,68,.15); border: 1px solid var(--danger); color: #fca5a5; padding: 12px 14px; border-radius: 8px; margin-bottom: 12px; }
   .head { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
@@ -125,6 +135,7 @@
     </div>
     <div class="buttons">
       <button class="btn-scan" onclick="doLogin()">登录</button>
+      <button class="btn-register" onclick="doRegister()">注册</button>
       <button class="btn-refresh" onclick="doLogout()">退出</button>
     </div>
   </div>
@@ -168,6 +179,10 @@
     </div>
     <div id="history"></div>
   </div>
+
+  <footer style="text-align:center; margin-top:28px; color:var(--muted); font-size:12px;">
+    Web 安全扫描器 · 仅供学习与授权测试使用
+  </footer>
 </div>
 
 <script>
@@ -208,6 +223,25 @@ function doLogout() {
   updateLoginStatus();
   document.getElementById('result').innerHTML = '';
   document.getElementById('history').innerHTML = '<div class="head">请先登录后查看历史</div>';
+}
+
+async function doRegister() {
+  const username = document.getElementById('login_username').value.trim();
+  const password = document.getElementById('login_password').value.trim();
+  if (!username || !password) { alert('请输入用户名和密码'); return; }
+  try {
+    const resp = await fetch('/register', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({username, password}) });
+    const data = await resp.json();
+    if (data.api_key) {
+      localStorage.setItem('api_key', data.api_key);
+      localStorage.setItem('username', data.username);
+      updateLoginStatus();
+      loadHistory();
+      alert('注册成功，已自动登录：' + data.username);
+    } else {
+      alert('注册失败：' + (data.detail || '未知错误'));
+    }
+  } catch (e) { alert('注册请求失败：' + e); }
 }
 
 function updateLoginStatus() {

@@ -19,6 +19,7 @@
 - **限流**：按 IP 滑动窗口限流，防止滥用（默认 60 次/分钟，可用 `SCANNER_RATE_LIMIT` / `SCANNER_RATE_WINDOW` 环境变量调整）
 - **登录失败锁定**：连续失败 5 次锁定账号 5 分钟，防暴力破解
 - **API Key 鉴权**：登录获取 API Key，所有扫描 / 查询接口需携带 X-API-Key
+- **多用户注册**：支持注册多个账号，各自独立使用
 - **结果结构化**：dict 结果 + JSON / HTML 报告，便于接入 API / 前端
 
 ## 环境
@@ -86,13 +87,19 @@ uvicorn api:app --reload --host 127.0.0.1 --port 8000
 
 任务与结果存 SQLite（`tasks.db`），**重启服务不丢失**。
 
-**鉴权**：所有扫描 / 查询接口都需要 `X-API-Key` 请求头。先登录获取 key（默认账号 `admin` / `admin123`，可通过环境变量 `SCANNER_ADMIN_PASSWORD` 修改密码）：
+**鉴权**：所有扫描 / 查询接口都需要 `X-API-Key` 请求头。先登录（或注册）获取 key，默认账号密码在 `config.py` 中配置：
 
 ```bash
+# 登录获取 key
 curl -X POST http://127.0.0.1:8000/login \
   -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin123"}'
-# 返回 {"username":"admin","api_key":"..."}
+  -d '{"username": "你的用户名", "password": "你的密码"}'
+# 返回 {"username":"...","api_key":"..."}
+
+# 或注册新账号（注册后即自动登录）
+curl -X POST http://127.0.0.1:8000/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "新用户名", "password": "至少6位密码"}'
 ```
 
 之后请求带上 key：`-H "X-API-Key: 你的key"`

@@ -87,6 +87,11 @@ class LoginRequest(BaseModel):
     password: str = Field(..., description="密码")
 
 
+class RegisterRequest(BaseModel):
+    username: str = Field(..., description="用户名（3-32 位）")
+    password: str = Field(..., description="密码（至少 6 位）")
+
+
 # ---------------- SQLite 存储 ----------------
 _db_lock = threading.Lock()
 
@@ -230,6 +235,22 @@ def _reset_failures(username):
         _login_failures.pop(username, None)
 
 
+def _create_user(username, password):
+    """创建新用户，返回 (api_key, 错误信息)"""
+    with _db_lock:
+        conn = _db()
+        row = conn.execute("SELECT username FROM users WHERE username=?", (username,)).fetchone()
+        if row:
+            conn.close()
+            return None, "用户名已存在"
+        salt = secrets.token_hex(16)
+        api_key = _gen_api_key()
+        conn.execute("INSERT INTO users VALUES (?,?,?,?)", (username, _hash_password(password, salt), salt, api_key))
+        conn.commit()
+        conn.close()
+    return api_key, None
+
+
 def require_api_key(x_api_key: str = Header(None)):
     """FastAPI 依赖：校验请求头里的 X-API-Key"""
     if not x_api_key or not _valid_api_key(x_api_key):
@@ -298,6 +319,20 @@ def login(req: LoginRequest):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     _reset_failures(req.username)
     return {"username": user["username"], "api_key": user["api_key"]}
+
+
+@app.post("/register")
+def register(req: RegisterRequest):
+    """注册新账号（注册后即登录，返回 API Key）"""
+    username = req.username.strip()
+    if len(username) < 3 or len(username) > 32:
+        raise HTTPException(status_code=400, detail="用户名长度需在 3-32 位之间")
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="密码至少 6 位")
+    api_key, err = _create_user(username, req.password)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    return {"username": username, "api_key": api_key}
 
 
 # ---------------- 提交任务（异步） ----------------
