@@ -202,6 +202,34 @@ def _valid_api_key(api_key):
     return row is not None
 
 
+# 登录失败锁定（防暴力破解）
+_login_failures = {}   # username -> {"count": int, "locked_until": float}
+_login_lock = threading.Lock()
+
+
+def _check_locked(username):
+    """返回 (是否锁定, 剩余秒数)"""
+    with _login_lock:
+        rec = _login_failures.get(username)
+        if rec and rec["locked_until"] > time.time():
+            return True, int(rec["locked_until"] - time.time())
+        return False, 0
+
+
+def _record_failure(username):
+    with _login_lock:
+        rec = _login_failures.setdefault(username, {"count": 0, "locked_until": 0})
+        rec["count"] += 1
+        if rec["count"] >= config.MAX_LOGIN_FAILURES:
+            rec["locked_until"] = time.time() + config.LOCKOUT_SECONDS
+            rec["count"] = 0
+
+
+def _reset_failures(username):
+    with _login_lock:
+        _login_failures.pop(username, None)
+
+
 def require_api_key(x_api_key: str = Header(None)):
     """FastAPI 依赖：校验请求头里的 X-API-Key"""
     if not x_api_key or not _valid_api_key(x_api_key):
@@ -261,9 +289,14 @@ def info():
 @app.post("/login")
 def login(req: LoginRequest):
     """登录获取 API Key（用账号密码换 key）"""
+    locked, remain = _check_locked(req.username)
+    if locked:
+        raise HTTPException(status_code=429, detail=f"失败次数过多，账号已锁定，请 {remain} 秒后再试")
     user = _verify_user(req.username, req.password)
     if not user:
+        _record_failure(req.username)
         raise HTTPException(status_code=401, detail="用户名或密码错误")
+    _reset_failures(req.username)
     return {"username": user["username"], "api_key": user["api_key"]}
 
 

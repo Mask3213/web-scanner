@@ -43,5 +43,7 @@ UPLOAD_SUBMIT_FIELD = "submit"
 # ---------- 服务 ----------
 RATE_LIMIT = 60        # 每窗口最大请求数
 RATE_WINDOW = 60       # 窗口秒数
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "admin123"   # 可通过环境变量 SCANNER_ADMIN_PASSWORD 覆盖
+MAX_LOGIN_FAILURES = 5      # 连续失败 N 次后锁定账号
+LOCKOUT_SECONDS = 300       # 锁定时长（秒）
+ADMIN_USERNAME = "Mask"
+ADMIN_PASSWORD = "258456"   # 可通过环境变量 SCANNER_ADMIN_PASSWORD 覆盖
