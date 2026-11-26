@@ -11,14 +11,14 @@ import argparse
 
 from urllib.parse import parse_qsl
 
-from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, upload, report
+from scanner import common, config, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, upload, report
 
 
 def main():
     parser = argparse.ArgumentParser(description="Web 安全扫描器")
     parser.add_argument("-u", "--url", help="目标基地址，如 http://127.0.0.1/pikachu")
-    parser.add_argument("-w", "--wordlist", default="dict.txt", help="目录字典路径")
-    parser.add_argument("-t", "--threads", type=int, default=20, help="目录扫描线程数")
+    parser.add_argument("-w", "--wordlist", default=config.DEFAULT_WORDLIST, help="目录字典路径")
+    parser.add_argument("-t", "--threads", type=int, default=config.DEFAULT_THREADS, help="目录扫描线程数")
     parser.add_argument("--sqli", metavar="URL", help="SQL 注入检测目标（带参数的 URL）")
     parser.add_argument("--xss", metavar="URL", help="反射型 XSS 检测目标（带参数的 URL）")
     parser.add_argument("--rce", metavar="URL", help="命令注入检测目标（带参数的 URL）")

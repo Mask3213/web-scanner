@@ -3,6 +3,8 @@
 import requests
 from urllib.parse import urlparse, urlencode, urlunparse, parse_qsl
 
+from . import config
+
 
 def load_wordlist(path):
     """读取字典文件，跳过空行和 # 开头的注释行"""
@@ -13,7 +15,7 @@ def load_wordlist(path):
 def target_alive(url):
     """扫描前先探测目标是否存活，返回 (是否可达, 状态码)"""
     try:
-        r = requests.get(url, timeout=5)
+        r = requests.get(url, timeout=config.TIMEOUT)
         return True, r.status_code
     except requests.RequestException:
         return False, None
@@ -41,7 +43,7 @@ def pick_param(params, param=None):
     return next(iter(params), None)
 
 
-def send(method, url, params, timeout=5, session=None):
+def send(method, url, params, timeout=config.TIMEOUT, session=None):
     """按方法发请求（GET 用 query，POST 用 body）；可传入带登录态的 Session"""
     req = session if session else requests
     if method == "POST":
@@ -52,7 +54,7 @@ def send(method, url, params, timeout=5, session=None):
 def login(login_url, data):
     """登录并返回带 cookie 的 Session（用于需要登录的靶子）"""
     s = requests.Session()
-    s.post(login_url, data=data, timeout=5)
+    s.post(login_url, data=data, timeout=config.TIMEOUT)
     return s
 
 

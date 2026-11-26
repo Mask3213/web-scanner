@@ -1,14 +1,7 @@
 # -*- coding: utf-8 -*-
 """本地文件包含（LFI）检测：目录穿越读取敏感文件"""
 import requests
-from . import common
-
-# (payload, 成功包含时页面会出现的文件内容特征)
-LFI_PAYLOADS = [
-    ("../../../../../../windows/win.ini", ["[fonts]", "[extensions]"]),
-    ("../../../../../../../../etc/passwd", ["root:"]),
-    ("../../../../../../../../etc/hosts", ["localhost"]),
-]
+from . import common, config
 
 
 def lfi_check(url, data=None, param=None):
@@ -27,7 +20,7 @@ def lfi_check(url, data=None, param=None):
         result["error"] = "目标没有可注入的参数"
         return result
 
-    for path, markers in LFI_PAYLOADS:
+    for path, markers in config.LFI_PAYLOADS:
         p = dict(params)
         p[pname] = path
         try:

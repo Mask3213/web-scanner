@@ -115,6 +115,7 @@ curl http://127.0.0.1:8000/task/abc123
 main.py              命令行入口
 api.py               REST API 服务（FastAPI）
 scanner/             扫描引擎包
+  ├─ config.py       全局配置（超时 / 字典 / 阈值 / payload）
   ├─ common.py       通用工具（字典加载、存活探测、请求构造）
   ├─ fingerprint.py  指纹识别
   ├─ sensitive.py    敏感文件检测

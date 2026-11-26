@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 
 from urllib.parse import parse_qsl
 
-from scanner import common, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, upload, report
+from scanner import common, config, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, upload, report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -47,8 +47,8 @@ app.add_middleware(
 
 
 # ---------------- 限流（防滥用） ----------------
-RATE_LIMIT = int(os.environ.get("SCANNER_RATE_LIMIT", "60"))      # 每窗口最多请求数
-RATE_WINDOW = float(os.environ.get("SCANNER_RATE_WINDOW", "60"))  # 窗口秒数
+RATE_LIMIT = int(os.environ.get("SCANNER_RATE_LIMIT", str(config.RATE_LIMIT)))      # 每窗口最多请求数
+RATE_WINDOW = float(os.environ.get("SCANNER_RATE_WINDOW", str(config.RATE_WINDOW)))  # 窗口秒数
 _rate_records = {}     # ip -> deque[时间戳]
 _rate_lock = threading.Lock()
 
@@ -174,12 +174,12 @@ def _init_auth():
         row = conn.execute("SELECT COUNT(*) FROM users").fetchone()
         if row[0] == 0:
             salt = secrets.token_hex(16)
-            default_pw = os.environ.get("SCANNER_ADMIN_PASSWORD", "admin123")
+            default_pw = os.environ.get("SCANNER_ADMIN_PASSWORD", config.ADMIN_PASSWORD)
             conn.execute(
                 "INSERT INTO users VALUES (?,?,?,?)",
-                ("admin", _hash_password(default_pw, salt), salt, _gen_api_key()),
+                (config.ADMIN_USERNAME, _hash_password(default_pw, salt), salt, _gen_api_key()),
             )
-            print(f"[*] 已创建默认管理员账号：admin / {default_pw}")
+            print(f"[*] 已创建默认管理员账号：{config.ADMIN_USERNAME} / {default_pw}")
         conn.commit()
         conn.close()
 

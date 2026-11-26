@@ -2,16 +2,18 @@
 """任意文件上传检测：上传含危险扩展名的文件，看是否被接受"""
 import random
 import requests
-from . import common
+from . import common, config
 
 
-def upload_check(url, file_field="uploadfile", submit_field="submit", session=None):
+def upload_check(url, file_field=None, submit_field=None, session=None):
     """对文件上传点做检测，返回结构化结果
 
     url          上传接口地址（form action）
-    file_field   文件表单字段名（默认 uploadfile）
-    submit_field 提交按钮字段名（默认 submit）
+    file_field   文件表单字段名（默认 config.UPLOAD_FILE_FIELD）
+    submit_field 提交按钮字段名（默认 config.UPLOAD_SUBMIT_FIELD）
     """
+    file_field = file_field or config.UPLOAD_FILE_FIELD
+    submit_field = submit_field or config.UPLOAD_SUBMIT_FIELD
     result = {
         "module": "upload",
         "target": url,

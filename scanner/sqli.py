@@ -2,17 +2,7 @@
 """SQL 注入检测：错误回显 + 布尔盲注 + 时间盲注"""
 import time
 import requests
-from . import common
-
-# 数据库报错时常见的错误关键字
-SQL_ERRORS = [
-    "you have an error in your sql syntax",
-    "mysql_fetch",
-    "warning: mysql",
-    "mysql server",
-    "syntax error",
-    "unclosed quotation mark",
-]
+from . import common, config
 
 
 def _payload(params, pname, value):
@@ -22,7 +12,7 @@ def _payload(params, pname, value):
     return p
 
 
-def sqli_check(url, data=None, param=None, sleep_sec=3):
+def sqli_check(url, data=None, param=None, sleep_sec=config.SLEEP_SEC):
     """对指定参数做 SQL 注入检测，返回结构化结果"""
     method, base, params = common.parse_target(url, data)
     pname = common.pick_param(params, param)
@@ -56,7 +46,7 @@ def sqli_check(url, data=None, param=None, sleep_sec=3):
         r = None
     if r is not None:
         body = r.text.lower()
-        for marker in SQL_ERRORS:
+        for marker in config.SQL_ERRORS:
             if marker in body:
                 result["vulnerable"] = True
                 result["technique"] = "错误回显"
@@ -80,7 +70,7 @@ def sqli_check(url, data=None, param=None, sleep_sec=3):
         "false_len": len(r_false.content),
         "diff": diff,
     }
-    if diff > 50:
+    if diff > config.BOOLEAN_DIFF_THRESHOLD:
         result["vulnerable"] = True
         result["technique"] = "布尔盲注"
         result["payload"] = orig + "' OR '1'='1"
