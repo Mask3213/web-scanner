@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 
 from urllib.parse import parse_qsl
 
-from scanner import common, config, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, upload, report
+from scanner import common, config, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, upload, csrf, report
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -80,6 +80,7 @@ class InjectRequest(BaseModel):
     param: str | None = Field(None, description="指定参数名")
     login_url: str | None = Field(None, description="登录页地址（可选，需要登录的靶子用）")
     login_data: str | None = Field(None, description="登录表单数据，如 username=admin&password=123456&submit=1")
+    login_method: str = "POST"
 
 
 class LoginRequest(BaseModel):
@@ -291,7 +292,7 @@ def _login(req: InjectRequest):
     """如果请求里带了登录信息，就登录并返回 session"""
     if req.login_url:
         data = dict(parse_qsl(req.login_data or "", keep_blank_values=True))
-        return common.login(req.login_url, data)
+        return common.login(req.login_url, data, method=req.login_method)
     return None
 
 
@@ -387,6 +388,14 @@ def do_upload(req: InjectRequest, api_key: str = Depends(require_api_key)):
     """任意文件上传检测：提交后返回 task_id"""
     session = _login(req)
     task_id = _submit("upload", req.url, lambda: upload.upload_check(req.url, session=session))
+    return {"task_id": task_id, "status": "running"}
+
+
+@app.post("/csrf")
+def do_csrf(req: InjectRequest, api_key: str = Depends(require_api_key)):
+    """CSRF 检测：提交后返回 task_id"""
+    session = _login(req)
+    task_id = _submit("csrf", req.url, lambda: csrf.csrf_check(req.url, session=session))
     return {"task_id": task_id, "status": "running"}
 
 

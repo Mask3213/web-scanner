@@ -11,7 +11,7 @@ import argparse
 
 from urllib.parse import parse_qsl
 
-from scanner import common, config, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, upload, report
+from scanner import common, config, fingerprint, sensitive, dirscan, sqli, xss, rce, stored_xss, lfi, upload, csrf, report
 
 
 def main():
@@ -25,9 +25,11 @@ def main():
     parser.add_argument("--stored-xss", metavar="URL", help="存储型 XSS 检测目标（留言/评论类页面）")
     parser.add_argument("--lfi", metavar="URL", help="文件包含(LFI)检测目标（带参数的 URL）")
     parser.add_argument("--upload", metavar="URL", help="文件上传检测目标（上传接口地址）")
+    parser.add_argument("--csrf", metavar="URL", help="CSRF 检测目标（含表单的页面）")
     parser.add_argument("--data", metavar="k=v", help="POST 请求体（配合 --sqli / --xss / --rce），如 name=1")
     parser.add_argument("--login", metavar="URL", help="登录页地址（需要登录的靶子用）")
     parser.add_argument("--login-data", metavar="k=v", help="登录表单数据，如 username=admin&password=123456&submit=1")
+    parser.add_argument("--login-method", default="POST", choices=["GET", "POST"], help="登录请求方法（默认 POST）")
     parser.add_argument("--param", metavar="NAME", help="指定要检测的参数名（默认自动选第一个非 submit 参数）")
     parser.add_argument("-o", "--output", metavar="FILE", help="保存报告到文件（.html 生成网页报告，否则生成 JSON）")
     args = parser.parse_args()
@@ -38,7 +40,7 @@ def main():
     session = None
     if args.login:
         login_data = dict(parse_qsl(args.login_data or "", keep_blank_values=True))
-        session = common.login(args.login, login_data)
+        session = common.login(args.login, login_data, method=args.login_method)
         print(f"[*] 已登录 {args.login}")
 
     if args.sqli:
@@ -53,9 +55,11 @@ def main():
         findings.append(lfi.lfi_check(args.lfi))
     elif args.upload:
         findings.append(upload.upload_check(args.upload))
+    elif args.csrf:
+        findings.append(csrf.csrf_check(args.csrf, session=session))
     else:
         if not args.url:
-            parser.error("请提供 -u 目标地址，或用 --sqli / --xss / --rce / --stored-xss / --lfi / --upload 指定单点检测目标")
+            parser.error("请提供 -u 目标地址，或用 --sqli / --xss / --rce / --stored-xss / --lfi / --upload / --csrf 指定单点检测目标")
 
         ok, code = common.target_alive(args.url)
         if not ok:

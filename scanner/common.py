@@ -51,10 +51,13 @@ def send(method, url, params, timeout=config.TIMEOUT, session=None):
     return req.get(url, params=params, timeout=timeout)
 
 
-def login(login_url, data):
-    """登录并返回带 cookie 的 Session（用于需要登录的靶子）"""
+def login(login_url, data, method="POST"):
+    """登录并返回带 cookie 的 Session（用于需要登录的靶子），method 可为 GET 或 POST"""
     s = requests.Session()
-    s.post(login_url, data=data, timeout=config.TIMEOUT)
+    if method.upper() == "GET":
+        s.get(login_url, params=data, timeout=config.TIMEOUT)
+    else:
+        s.post(login_url, data=data, timeout=config.TIMEOUT)
     return s
 
 

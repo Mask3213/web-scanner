@@ -36,6 +36,8 @@ def render(findings):
             _render_lfi(r)
         elif m == "upload":
             _render_upload(r)
+        elif m == "csrf":
+            _render_csrf(r)
 
 
 def _render_fingerprint(r):
@@ -129,6 +131,18 @@ def _render_upload(r):
         print(f"      {r.get('detail') or '未发现'}")
 
 
+def _render_csrf(r):
+    print(f"  [*] CSRF 检测: {r.get('target')}")
+    if r.get("error"):
+        print(f"      [!] {r['error']}")
+        return
+    if r.get("vulnerable"):
+        print("      [高危] 缺少 CSRF 防护")
+        print(f"      {r.get('detail')}")
+    else:
+        print(f"      {r.get('detail') or '未发现'}")
+
+
 def save_json(report, path):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
@@ -174,6 +188,8 @@ def _finding_html(f):
         return _vuln_html("📂 文件包含（LFI）", f)
     if m == "upload":
         return _vuln_html("📤 任意文件上传", f)
+    if m == "csrf":
+        return _vuln_html("🔗 CSRF", f)
     return ""
 
 

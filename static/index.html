@@ -81,6 +81,7 @@
   .btn-lfi { background: #f97316; }
   .btn-upload { background: #22c55e; }
   .btn-register { background: #6366f1; }
+  .btn-csrf { background: #0ea5e9; }
   #status { color: var(--accent); margin-bottom: 12px; font-size: 14px; }
   .err { background: rgba(239,68,68,.15); border: 1px solid var(--danger); color: #fca5a5; padding: 12px 14px; border-radius: 8px; margin-bottom: 12px; }
   .head { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
@@ -166,6 +167,7 @@
       <button class="btn-stored" onclick="run('stored_xss')">存储XSS</button>
       <button class="btn-lfi" onclick="run('lfi')">文件包含</button>
       <button class="btn-upload" onclick="run('upload')">文件上传</button>
+      <button class="btn-csrf" onclick="run('csrf')">CSRF</button>
     </div>
   </div>
 
@@ -273,6 +275,8 @@ async function run(mode) {
     path = '/lfi'; body = { url };
   } else if (mode === 'upload') {
     path = '/upload'; body = { url };
+  } else if (mode === 'csrf') {
+    path = '/csrf'; body = { url };
   } else {
     path = '/xss'; body = { url };
   }
@@ -316,7 +320,7 @@ async function poll(taskId, mode) {
 }
 
 // ---------------- 历史记录 ----------------
-const MODE_NAME = { scan: '完整扫描', sqli: 'SQL注入', xss: 'XSS', rce: '命令注入', stored_xss: '存储XSS', lfi: '文件包含', upload: '文件上传' };
+const MODE_NAME = { scan: '完整扫描', sqli: 'SQL注入', xss: 'XSS', rce: '命令注入', stored_xss: '存储XSS', lfi: '文件包含', upload: '文件上传', csrf: 'CSRF' };
 
 async function loadHistory() {
   const el = document.getElementById('history');
@@ -473,6 +477,16 @@ function finding(f) {
     if (f.vulnerable) {
       h += '<div class="item"><span class="badge badge-danger">任意文件上传</span>' + esc(f.detail || '') + '</div>';
       h += '<div class="item"><span class="kv">payload：</span><code>' + esc(f.payload) + '</code></div>';
+    } else {
+      h += '<div class="item"><span class="badge badge-ok">' + esc(f.detail || '未发现') + '</span></div>';
+    }
+    return h + '</div>';
+  }
+  if (m === 'csrf') {
+    let h = '<div class="block"><h3>🔗 CSRF 检测</h3>';
+    if (f.error) return h + '<div class="err">' + esc(f.error) + '</div></div>';
+    if (f.vulnerable) {
+      h += '<div class="item"><span class="badge badge-danger">缺少 CSRF 防护</span>' + esc(f.detail || '') + '</div>';
     } else {
       h += '<div class="item"><span class="badge badge-ok">' + esc(f.detail || '未发现') + '</span></div>';
     }

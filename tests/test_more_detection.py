@@ -2,7 +2,7 @@
 """更多检测模块单元测试（mock HTTP，不需要靶场）"""
 from unittest import mock
 
-from scanner import rce, upload, stored_xss, sensitive, config
+from scanner import rce, upload, stored_xss, sensitive, csrf, config
 
 
 def _mk(content=b"", text=""):
@@ -53,3 +53,21 @@ def test_sensitive_found():
         res = sensitive.sensitive_check("http://x.com")
     assert len(res) == len(config.SENSITIVE_PATHS)
     assert all(f["module"] == "sensitive" for f in res)
+
+
+def test_csrf_vulnerable():
+    def fake_get(url, timeout=5):
+        return _mk(text='<form method="get"><input type="text" name="sex"><input type="submit"></form>')
+
+    with mock.patch("scanner.csrf.requests.get", side_effect=fake_get):
+        r = csrf.csrf_check("http://x.com/edit")
+    assert r["vulnerable"] is True
+
+
+def test_csrf_protected():
+    def fake_get(url, timeout=5):
+        return _mk(text='<form method="post"><input type="hidden" name="csrf_token" value="x"><input type="submit"></form>')
+
+    with mock.patch("scanner.csrf.requests.get", side_effect=fake_get):
+        r = csrf.csrf_check("http://x.com/edit")
+    assert r["vulnerable"] is False

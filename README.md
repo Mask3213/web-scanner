@@ -15,6 +15,7 @@
 - **存储型 XSS 检测**：提交 payload 后检测是否持久化回显
 - **文件包含（LFI）检测**：目录穿越读取敏感文件
 - **任意文件上传检测**：上传危险扩展名文件，检测是否被接受
+- **CSRF 检测**：检查表单是否缺少 CSRF token 防护
 - **会话登录**：支持需要登录的靶子（自动登录 + cookie）
 - **限流**：按 IP 滑动窗口限流，防止滥用（默认 60 次/分钟，可用 `SCANNER_RATE_LIMIT` / `SCANNER_RATE_WINDOW` 环境变量调整）
 - **登录失败锁定**：连续失败 5 次锁定账号 5 分钟，防暴力破解
@@ -60,6 +61,9 @@ python main.py --lfi "http://127.0.0.1/pikachu/vul/fileinclude/fi_local.php?file
 # 文件上传检测
 python main.py --upload "http://127.0.0.1/pikachu/vul/unsafeupload/clientcheck.php"
 
+# CSRF 检测（需要登录的靶子：--login 登录 + --login-method GET）
+python main.py --csrf "http://127.0.0.1/pikachu/vul/csrf/csrfget/csrf_get_edit.php" --login "http://127.0.0.1/pikachu/vul/csrf/csrfget/csrf_get_login.php" --login-data "username=vince&password=123456" --login-method GET
+
 # 需要登录的 POST XSS（先登录再测）
 python main.py --xss "http://127.0.0.1/pikachu/vul/xss/xsspost/xss_reflected_post.php" --data "message=test&submit=1" --login "http://127.0.0.1/pikachu/vul/xss/xsspost/post_login.php" --login-data "username=admin&password=123456&submit=1"
 
@@ -80,7 +84,7 @@ uvicorn api:app --reload --host 127.0.0.1 --port 8000
 
 **异步任务流程**：先提交任务拿到 `task_id`，再轮询取结果。
 
-- `POST /scan`、`POST /sqli`、`POST /xss`、`POST /rce`、`POST /stored-xss`、`POST /lfi`、`POST /upload`：提交任务，返回 `{"task_id": "...", "status": "running"}`
+- `POST /scan`、`POST /sqli`、`POST /xss`、`POST /rce`、`POST /stored-xss`、`POST /lfi`、`POST /upload`、`POST /csrf`：提交任务，返回 `{"task_id": "...", "status": "running"}`
 - `GET /task/{task_id}`：查询任务状态与结果（`running` / `done` / `error`）
 - `GET /tasks`：任务列表（历史记录）
 - `DELETE /task/{task_id}`：删除一条历史记录
@@ -134,6 +138,7 @@ scanner/             扫描引擎包
   ├─ stored_xss.py   存储型 XSS 检测
   ├─ lfi.py          文件包含(LFI)检测
   ├─ upload.py       任意文件上传检测
+  ├─ csrf.py         CSRF 检测
   └─ report.py       结果汇总 + JSON 报告
 dict.txt             目录字典（小）
 requirements.txt     依赖
